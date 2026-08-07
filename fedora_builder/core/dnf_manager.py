@@ -63,10 +63,12 @@ class DNFManager:
         conf_content += "clean_requirements_on_remove=True\n"
         conf_content += "best=False\n"
         conf_content += "skip_if_unavailable=True\n"
-        conf_content += "max_parallel_downloads=10\n"
+        cpus = os.cpu_count() or 4
+        max_downloads = min(20, max(10, cpus * 2))
+        conf_content += f"max_parallel_downloads={max_downloads}\n"
         conf_content += "keepcache=True\n"
         conf_content += "deltarpm=true\n"
-        conf_content += "fastestmirror=false\n"
+        conf_content += "fastestmirror=true\n"
         conf_content += "install_weak_deps=False\n"
         conf_content += "tsflags=nodocs\n"
         with open(dnf_conf_dir / "dnf.conf", "w") as f:

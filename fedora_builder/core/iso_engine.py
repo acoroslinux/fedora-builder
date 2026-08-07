@@ -72,15 +72,24 @@ class ISOEngine:
             output_path.unlink()
 
         compression = self.config.get("compression", "zstd")
+        num_cpus = os.cpu_count() or 4
         # Ensure build_host isolated chroot also sees the target directory
         if hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:
             rel_parent = output_path.parent.relative_to(self.workdir) if output_path.is_relative_to(self.workdir) else None
             if rel_parent:
                 (self.toolchain.build_host_dir / "workdir" / rel_parent).mkdir(parents=True, exist_ok=True)
 
+        logger.info(f"Creating SquashFS with {compression} compression using {num_cpus} CPU cores...")
         self.toolchain.run_tool(
             "mksquashfs",
-            [str(source_dir), str(output_path), "-comp", compression, "-b", "1M", "-noappend"],
+            [
+                str(source_dir),
+                str(output_path),
+                "-comp", compression,
+                "-b", "1M",
+                "-processors", str(num_cpus),
+                "-noappend"
+            ],
         )
 
     def _create_discinfo(self, iso_staging: Path):
@@ -210,7 +219,9 @@ class ISOEngine:
             out_path.touch()
             return out_path
             
-        subprocess.run(["tar", "-cJf", str(out_path), "-C", str(self.target_root), "."], check=True)
+        env = os.environ.copy()
+        env["XZ_OPT"] = f"-T0 -{self.config.get('compression_level', '6')}"
+        subprocess.run(["tar", "-cJf", str(out_path), "-C", str(self.target_root), "."], env=env, check=True)
         return out_path
 
     def build_disk_image(self) -> Path:
