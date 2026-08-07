@@ -156,6 +156,9 @@ class BuildOrchestrator:
                 ks_path.parent.mkdir(parents=True, exist_ok=True)
                 ks_mgr.write(ks_path)
                 
+            # Unmount target rootfs virtual filesystems (proc, sys, dev, cache) before squashfs compression
+            chroot.umount_virtual_fs()
+
             iso_engine = ISOEngine(
                 self.workdir, self.target_root, artifact_name, 
                 self.config, self.mode, toolchain

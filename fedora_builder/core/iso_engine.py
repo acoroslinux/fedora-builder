@@ -88,7 +88,8 @@ class ISOEngine:
                 "-comp", compression,
                 "-b", "1M",
                 "-processors", str(num_cpus),
-                "-noappend"
+                "-noappend",
+                "-e", "proc", "sys", "dev", "tmp", "var/cache/dnf"
             ],
         )
 
