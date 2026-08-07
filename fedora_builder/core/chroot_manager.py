@@ -105,24 +105,29 @@ class ChrootManager:
 
         self._setup_qemu_static()
 
-        mounts = [
-            ("proc", self.target_root / "proc", "proc", None),
-            ("sysfs", self.target_root / "sys", "sysfs", None),
-            ("udev", self.target_root / "dev", "devtmpfs", None),
-            ("devpts", self.target_root / "dev" / "pts", "devpts", None),
-            ("tmpfs", self.target_root / "dev" / "shm", "tmpfs", None),
+        # Bind-mount /proc, /sys, /dev from the host into the target chroot.
+        # --rbind from the running host avoids creating new kernel namespaces
+        # which hits 'move_mount() failed: No space left on device' when many
+        # mounts are already active on the host.
+        pseudo_mounts = [
+            (Path("/proc"), self.target_root / "proc"),
+            (Path("/sys"),  self.target_root / "sys"),
+            (Path("/dev"),  self.target_root / "dev"),
         ]
 
-        for src, target, fstype, opts in mounts:
+        for host_src, target in pseudo_mounts:
             try:
                 target.mkdir(parents=True, exist_ok=True)
-                cmd = ["mount", "-t", fstype]
-                if opts:
-                    cmd.extend(["-o", opts])
-                cmd.extend([src, str(target)])
-                subprocess.run(cmd, capture_output=True)
+                res = subprocess.run(
+                    ["mount", "--rbind", str(host_src), str(target)],
+                    capture_output=True, text=True,
+                )
+                if res.returncode != 0 and "already mounted" not in res.stderr:
+                    logger.warning(f"Failed to rbind {host_src} at {target}: {res.stderr.strip()}")
+                else:
+                    subprocess.run(["mount", "--make-rslave", str(target)], capture_output=True)
             except Exception as e:
-                logger.warning(f"Failed to mount {src} at {target}: {e}")
+                logger.warning(f"Failed to bind-mount {host_src} at {target}: {e}")
 
         if self.cache_dir:
             dnf_cache_host = self.cache_dir / "dnf"
@@ -147,18 +152,17 @@ class ChrootManager:
             return
 
         logger.info(f"Unmounting virtual filesystems from target root: {self.target_root}")
-        targets = [
-            self.target_root / "var" / "cache" / "dnf",
-            self.target_root / "dev" / "shm",
-            self.target_root / "dev" / "pts",
-            self.target_root / "dev",
-            self.target_root / "sys",
-            self.target_root / "proc",
-        ]
 
-        for target in targets:
+        # Unmount DNF cache bind-mount
+        dnf_cache = self.target_root / "var" / "cache" / "dnf"
+        if dnf_cache.exists():
+            subprocess.run(["umount", "-l", "-f", str(dnf_cache)], capture_output=True)
+
+        # Recursively unmount rbind pseudo-filesystems
+        for pseudo in ["dev", "sys", "proc"]:
+            target = self.target_root / pseudo
             if target.exists():
-                subprocess.run(["umount", "-l", "-f", str(target)], capture_output=True)
+                subprocess.run(["umount", "-R", "-l", str(target)], capture_output=True)
 
         self.is_mounted = False
 

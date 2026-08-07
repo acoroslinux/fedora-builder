@@ -80,33 +80,29 @@ class BuildOrchestrator:
             subdirs = ["chroot", "iso_root", "output", "cache"]
             output_dir = resolve_from_project("output")
 
-            stale_mounts = [
-                # Target rootfs virtual filesystems
+            # Unmount DNF cache and workdir bind-mounts with -l
+            simple_mounts = [
                 self.target_root / "var" / "cache" / "dnf",
-                self.target_root / "dev" / "shm",
-                self.target_root / "dev" / "pts",
-                self.target_root / "dev",
-                self.target_root / "sys",
-                self.target_root / "proc",
-                # build_host virtual filesystems
-                build_host / "dev" / "shm",
-                build_host / "dev" / "pts",
-                build_host / "dev",
-                build_host / "sys",
-                build_host / "proc",
             ]
-            # build_host /workdir/<sub> bind-mounts
             for sub in subdirs:
-                stale_mounts.append(build_host / "workdir" / sub)
-            stale_mounts.append(build_host / "workdir")
-            # Absolute-path mirrored bind-mounts inside build_host
-            for sub in subdirs:
-                host_sub = (self.workdir / sub) if sub != "output" else output_dir
-                stale_mounts.append(build_host / host_sub.relative_to("/"))
+                simple_mounts.append(build_host / "workdir" / sub)
+            simple_mounts.append(build_host / "workdir" / "output")
+            simple_mounts.append(build_host / "workdir")
+            for sub in ["chroot", "iso_root", "cache"]:
+                host_sub = self.workdir / sub
+                simple_mounts.append(build_host / host_sub.relative_to("/"))
+            simple_mounts.append(build_host / output_dir.relative_to("/"))
 
-            for mount_path in stale_mounts:
+            for mount_path in simple_mounts:
                 if mount_path.exists():
                     subprocess.run(["umount", "-l", "-f", str(mount_path)], capture_output=True)
+
+            # Use -R (recursive) for rbind pseudo-filesystems
+            for pseudo_root in [self.target_root, build_host]:
+                for pseudo in ["dev", "sys", "proc"]:
+                    target = pseudo_root / pseudo
+                    if target.exists():
+                        subprocess.run(["umount", "-R", "-l", str(target)], capture_output=True)
 
         try:
             if self.target_root.exists():

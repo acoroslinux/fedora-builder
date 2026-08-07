@@ -314,23 +314,33 @@ class ToolchainManager:
 
         logger.info(f"Mounting virtual filesystems into build_host: {self.build_host_dir}")
 
-        mounts: List[Tuple[str, Path, str, Optional[str]]] = [
-            ("proc",    self.build_host_dir / "proc",        "proc",     None),
-            ("sysfs",   self.build_host_dir / "sys",         "sysfs",    None),
-            ("udev",    self.build_host_dir / "dev",         "devtmpfs", None),
-            ("devpts",  self.build_host_dir / "dev" / "pts", "devpts",   None),
-            ("tmpfs",   self.build_host_dir / "dev" / "shm", "tmpfs",    None),
+        # Bind-mount /proc, /sys, /dev from the host into build_host.
+        # Using --rbind from the host is the same strategy as arch-chroot, debootstrap, and lorax.
+        # Creating NEW filesystems with -t proc/sysfs/devtmpfs hits the kernel's mount namespace
+        # limit with "move_mount() failed: No space left on device" when many mounts are already active.
+        pseudo_mounts = [
+            (Path("/proc"),     self.build_host_dir / "proc"),
+            (Path("/sys"),      self.build_host_dir / "sys"),
+            (Path("/dev"),      self.build_host_dir / "dev"),
         ]
 
-        for src, target, fstype, opts in mounts:
+        for host_src, target in pseudo_mounts:
             target.mkdir(parents=True, exist_ok=True)
-            cmd = ["mount", "-t", fstype]
-            if opts:
-                cmd.extend(["-o", opts])
-            cmd.extend([src, str(target)])
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            if not host_src.exists():
+                logger.warning(f"Host path {host_src} does not exist, skipping bind-mount.")
+                continue
+            res = subprocess.run(
+                ["mount", "--rbind", str(host_src), str(target)],
+                capture_output=True, text=True,
+            )
             if res.returncode != 0 and "already mounted" not in res.stderr:
-                logger.warning(f"Could not mount {target}: {res.stderr.strip()}")
+                logger.warning(f"Could not bind-mount {host_src} → {target}: {res.stderr.strip()}")
+            else:
+                # Make the bind-mount read-writable and slave so host changes propagate
+                subprocess.run(
+                    ["mount", "--make-rslave", str(target)],
+                    capture_output=True,
+                )
 
         # Bind-mount target leaf paths explicitly both to /workdir/<subname> and to matching host absolute paths inside build_host
         # to avoid infinite recursion of build_host inside itself.
@@ -377,30 +387,26 @@ class ToolchainManager:
 
         subdirs = ["chroot", "iso_root", "cache"]
         output_dir = _resolve_from_project("output")
-        targets = []
 
-        # Absolute mirrored targets
+        # Unmount bind-mounted workdir leaves (reverse order)
+        bind_targets = []
         for sub in subdirs:
-            targets.append(self.build_host_dir / (self.workdir_base / sub).relative_to("/"))
-        targets.append(self.build_host_dir / output_dir.relative_to("/"))
-
-        # /workdir targets
+            bind_targets.append(self.build_host_dir / (self.workdir_base / sub).relative_to("/"))
+        bind_targets.append(self.build_host_dir / output_dir.relative_to("/"))
         for sub in subdirs:
-            targets.append(self.build_host_dir / "workdir" / sub)
-        targets.append(self.build_host_dir / "workdir" / "output")
+            bind_targets.append(self.build_host_dir / "workdir" / sub)
+        bind_targets.append(self.build_host_dir / "workdir" / "output")
+        bind_targets.append(self.build_host_dir / "workdir")
 
-        targets.extend([
-            self.build_host_dir / "workdir",
-            self.build_host_dir / "dev" / "shm",
-            self.build_host_dir / "dev" / "pts",
-            self.build_host_dir / "dev",
-            self.build_host_dir / "sys",
-            self.build_host_dir / "proc",
-        ])
-
-        for target in targets:
+        for target in bind_targets:
             if target.exists():
                 subprocess.run(["umount", "-l", str(target)], capture_output=True)
+
+        # Recursively unmount rbind pseudo-filesystems (proc/sys/dev and all submounts)
+        for pseudo in ["dev", "sys", "proc"]:
+            target = self.build_host_dir / pseudo
+            if target.exists():
+                subprocess.run(["umount", "-R", "-l", str(target)], capture_output=True)
 
         self.is_mounted = False
 
