@@ -121,9 +121,10 @@ class ChrootManager:
             self.is_mounted = False
             return
 
-        if not self.is_mounted and os.geteuid() != 0:
+        if os.geteuid() != 0:
             return
 
+        logger.info(f"Unmounting virtual filesystems from target root: {self.target_root}")
         targets = [
             self.target_root / "var" / "cache" / "dnf",
             self.target_root / "dev" / "shm",
@@ -135,7 +136,7 @@ class ChrootManager:
 
         for target in targets:
             if target.exists():
-                subprocess.run(["umount", "-l", str(target)], capture_output=True)
+                subprocess.run(["umount", "-l", "-f", str(target)], capture_output=True)
 
         self.is_mounted = False
 

@@ -70,6 +70,25 @@ class BuildOrchestrator:
         self.config = {"releasever": self.release.split("-")[-1] if self.release else "41", "basearch": self.arch}
 
     def _safe_clean_build_tree(self):
+        # Preventively unmount any stale mountpoints before cleaning
+        if self.mode != "mock" and os.geteuid() == 0:
+            for mount_path in [
+                self.target_root / "var" / "cache" / "dnf",
+                self.target_root / "dev" / "shm",
+                self.target_root / "dev" / "pts",
+                self.target_root / "dev",
+                self.target_root / "sys",
+                self.target_root / "proc",
+                self.workdir / "build_host" / "workdir",
+                self.workdir / "build_host" / "dev" / "shm",
+                self.workdir / "build_host" / "dev" / "pts",
+                self.workdir / "build_host" / "dev",
+                self.workdir / "build_host" / "sys",
+                self.workdir / "build_host" / "proc",
+            ]:
+                if mount_path.exists():
+                    subprocess.run(["umount", "-l", "-f", str(mount_path)], capture_output=True)
+
         if self.target_root.exists():
             shutil.rmtree(self.target_root, ignore_errors=True)
         iso_root = self.workdir / "iso_root"
@@ -101,9 +120,11 @@ class BuildOrchestrator:
         
         cache_dir = self.workdir.parent / "cache"
         chroot = ChrootManager(self.target_root, self.mode, cache_dir=cache_dir, arch=self.arch)
-        chroot.mount_virtual_fs()
         
         try:
+            toolchain.mount_virtual_fs()
+            chroot.mount_virtual_fs()
+
             dnf = DNFManager(chroot, self.config, toolchain=toolchain)
             dnf.bootstrap_rootfs(self.config["releasever"], self.config["basearch"])
             dnf.configure_repos(self.config.get("repos", []))
@@ -145,4 +166,12 @@ class BuildOrchestrator:
             return artifact
             
         finally:
-            chroot.umount_virtual_fs()
+            logger.info("Performing mandatory cleanup and unmounting all filesystems...")
+            try:
+                chroot.umount_virtual_fs()
+            except Exception as e:
+                logger.warning(f"Error unmounting target chroot: {e}")
+            try:
+                toolchain.umount_virtual_fs()
+            except Exception as e:
+                logger.warning(f"Error unmounting build_host toolchain: {e}")
