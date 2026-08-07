@@ -326,23 +326,28 @@ class ToolchainManager:
             if res.returncode != 0 and "already mounted" not in res.stderr:
                 logger.warning(f"Could not mount {target}: {res.stderr.strip()}")
 
-        # Bind-mount specific subdirectories (chroot, iso_root, output, cache) into build_host
-        # to avoid circular mount loops (since build_host is located inside workdir_base).
+        # Mirror the project root directory inside build_host so absolute host paths
+        # (e.g. /iso-builder/fedora-builder/workdir/x86_64/chroot) work identically inside build_host.
+        project_root = self.workdir_base.parent.parent  # /iso-builder/fedora-builder
+        project_mount_in_chroot = self.build_host_dir / project_root.relative_to("/")
+        project_mount_in_chroot.mkdir(parents=True, exist_ok=True)
+
+        res = subprocess.run(
+            ["mount", "--bind", str(project_root), str(project_mount_in_chroot)],
+            capture_output=True, text=True,
+        )
+        if res.returncode != 0 and "already mounted" not in res.stderr:
+            logger.warning(f"Could not bind-mount project root {project_root} into build_host: {res.stderr.strip()}")
+
+        # Also bind-mount /workdir for backward compatibility
         workdir_mount_base = self.build_host_dir / "workdir"
         workdir_mount_base.mkdir(parents=True, exist_ok=True)
-
         for sub in ["chroot", "iso_root", "output", "cache"]:
             host_sub = self.workdir_base / sub
             host_sub.mkdir(parents=True, exist_ok=True)
             chroot_sub = workdir_mount_base / sub
             chroot_sub.mkdir(parents=True, exist_ok=True)
-
-            res = subprocess.run(
-                ["mount", "--bind", str(host_sub), str(chroot_sub)],
-                capture_output=True, text=True,
-            )
-            if res.returncode != 0 and "already mounted" not in res.stderr:
-                logger.warning(f"Could not bind-mount {host_sub} into build_host: {res.stderr.strip()}")
+            subprocess.run(["mount", "--bind", str(host_sub), str(chroot_sub)], capture_output=True)
 
         self.is_mounted = True
 
@@ -355,7 +360,11 @@ class ToolchainManager:
 
         logger.info(f"Unmounting virtual filesystems from build_host: {self.build_host_dir}")
 
+        project_root = self.workdir_base.parent.parent
+        project_mount_in_chroot = self.build_host_dir / project_root.relative_to("/")
+
         targets = [
+            project_mount_in_chroot,
             self.build_host_dir / "workdir" / "cache",
             self.build_host_dir / "workdir" / "output",
             self.build_host_dir / "workdir" / "iso_root",
