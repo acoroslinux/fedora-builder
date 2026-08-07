@@ -31,6 +31,7 @@ class DNFManager:
         conf_content += "best=False\n"
         conf_content += "skip_if_unavailable=True\n"
         conf_content += "max_parallel_downloads=10\n"
+        conf_content += "keepcache=True\n"
         conf_content += "deltarpm=true\n"
         conf_content += "fastestmirror=false\n"
         conf_content += "install_weak_deps=False\n"
@@ -92,6 +93,8 @@ class DNFManager:
     def bootstrap_rootfs(self, releasever: str, basearch: str):
         if self.chroot.mode == "mock":
             self.target_root.mkdir(parents=True, exist_ok=True)
+            for d in ["etc/dnf", "etc/yum.repos.d", "boot", "usr/bin", "var/cache/dnf"]:
+                (self.target_root / d).mkdir(parents=True, exist_ok=True)
             return
         cmd = [
             "dnf", f"--installroot={self.target_root}", f"--releasever={releasever}",

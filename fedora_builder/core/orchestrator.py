@@ -99,7 +99,8 @@ class BuildOrchestrator:
         )
         toolchain.setup()
         
-        chroot = ChrootManager(self.target_root, self.mode, arch=self.arch)
+        cache_dir = self.workdir.parent / "cache"
+        chroot = ChrootManager(self.target_root, self.mode, cache_dir=cache_dir, arch=self.arch)
         chroot.mount_virtual_fs()
         
         try:
