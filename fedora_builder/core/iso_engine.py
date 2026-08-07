@@ -122,11 +122,48 @@ class ISOEngine:
     def _clean_rootfs(self, rootfs: Path):
         if self.mode == "mock":
             return
-        paths_to_clean = ["var/cache/dnf", "usr/share/doc", "usr/share/man"]
+
+        logger.info("Cleaning target rootfs prior to SquashFS compression...")
+
+        # Directories and paths to wipe completely
+        paths_to_clean = [
+            "var/cache/dnf",
+            "var/cache/yum",
+            "var/cache/rpm",
+            "var/lib/dnf/history*",
+            "var/log",
+            "var/tmp",
+            "tmp",
+            "usr/share/doc",
+            "usr/share/info",
+            "usr/share/man",
+            "usr/share/gnome/help",
+        ]
+
         for p in paths_to_clean:
             target = rootfs / p
             if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
+                if target.is_dir():
+                    shutil.rmtree(target, ignore_errors=True)
+                    target.mkdir(parents=True, exist_ok=True)
+                else:
+                    target.unlink(missing_ok=True)
+
+        # Reset machine-id so systemd generates a fresh unique ID at first boot
+        machine_id = rootfs / "etc" / "machine-id"
+        if machine_id.exists():
+            try:
+                machine_id.write_text("")
+            except Exception:
+                pass
+
+        # Reset random-seed
+        random_seed = rootfs / "var" / "lib" / "systemd" / "random-seed"
+        if random_seed.exists():
+            try:
+                random_seed.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     def build_iso(self) -> Path:
         self.iso_staging.mkdir(parents=True, exist_ok=True)
