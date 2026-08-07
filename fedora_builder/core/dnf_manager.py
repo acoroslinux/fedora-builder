@@ -187,7 +187,7 @@ class DNFManager:
     def clean_cache(self):
         if self.chroot.mode == "mock":
             return
-        subprocess.run(["dnf", "--installroot", str(self.target_root), "clean", "all"])
+        self._run_dnf(["--installroot", str(self.target_root), "clean", "all"])
 
     def configure_selinux(self, mode: str = "permissive"):
         selinux_dir = self.target_root / "etc" / "selinux"

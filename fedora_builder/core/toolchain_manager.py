@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fedora_builder.core.logger_setup import setup_logger
+from fedora_builder.core.path_utils import resolve_from_project as _resolve_from_project
 
 logger = setup_logger("toolchain_manager")
 
@@ -229,7 +230,12 @@ class ToolchainManager:
         full_cmd = ["chroot", str(self.build_host_dir)] + cmd_args
         logger.info(f"[BUILD_HOST CHROOT] {cmd_str}")
 
-        merged_env = os.environ.copy()
+        merged_env = {
+            "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+            "HOME": "/root",
+            "TERM": "xterm",
+        }
+        merged_env.update(os.environ)
         if env:
             merged_env.update(env)
 
@@ -328,25 +334,35 @@ class ToolchainManager:
 
         # Bind-mount target leaf paths explicitly both to /workdir/<subname> and to matching host absolute paths inside build_host
         # to avoid infinite recursion of build_host inside itself.
-        subdirs = ["chroot", "iso_root", "output", "cache"]
-        
+        subdirs = ["chroot", "iso_root", "cache"]
+        output_dir = _resolve_from_project("output")
+
         # 1. Bind-mount to /workdir/<subname> inside build_host
         workdir_mount_base = self.build_host_dir / "workdir"
         workdir_mount_base.mkdir(parents=True, exist_ok=True)
         for sub in subdirs:
-            host_sub = self.workdir_base / sub if sub != "output" else self.workdir_base.parent.parent / "output"
+            host_sub = self.workdir_base / sub
             host_sub.mkdir(parents=True, exist_ok=True)
             chroot_sub = workdir_mount_base / sub
             chroot_sub.mkdir(parents=True, exist_ok=True)
             subprocess.run(["mount", "--bind", str(host_sub), str(chroot_sub)], capture_output=True)
+        # Also bind-mount the output dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (workdir_mount_base / "output").mkdir(parents=True, exist_ok=True)
+        subprocess.run(["mount", "--bind", str(output_dir), str(workdir_mount_base / "output")], capture_output=True)
 
         # 2. Bind-mount to exact absolute host path inside build_host for transparent path resolution
         for sub in subdirs:
-            host_sub = self.workdir_base / sub if sub != "output" else self.workdir_base.parent.parent / "output"
+            host_sub = self.workdir_base / sub
             host_sub.mkdir(parents=True, exist_ok=True)
             target_in_chroot = self.build_host_dir / host_sub.relative_to("/")
             target_in_chroot.mkdir(parents=True, exist_ok=True)
             subprocess.run(["mount", "--bind", str(host_sub), str(target_in_chroot)], capture_output=True)
+        # Mirror output dir at its absolute path inside build_host
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_in_chroot = self.build_host_dir / output_dir.relative_to("/")
+        output_in_chroot.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["mount", "--bind", str(output_dir), str(output_in_chroot)], capture_output=True)
 
         self.is_mounted = True
 
@@ -359,17 +375,19 @@ class ToolchainManager:
 
         logger.info(f"Unmounting virtual filesystems from build_host: {self.build_host_dir}")
 
-        subdirs = ["chroot", "iso_root", "output", "cache"]
+        subdirs = ["chroot", "iso_root", "cache"]
+        output_dir = _resolve_from_project("output")
         targets = []
 
         # Absolute mirrored targets
         for sub in subdirs:
-            host_sub = self.workdir_base / sub if sub != "output" else self.workdir_base.parent.parent / "output"
-            targets.append(self.build_host_dir / host_sub.relative_to("/"))
+            targets.append(self.build_host_dir / (self.workdir_base / sub).relative_to("/"))
+        targets.append(self.build_host_dir / output_dir.relative_to("/"))
 
         # /workdir targets
         for sub in subdirs:
             targets.append(self.build_host_dir / "workdir" / sub)
+        targets.append(self.build_host_dir / "workdir" / "output")
 
         targets.extend([
             self.build_host_dir / "workdir",

@@ -9,6 +9,7 @@ from fedora_builder.core.dnf_manager import DNFManager
 from fedora_builder.core.customizer import SystemCustomizer
 from fedora_builder.core.iso_engine import ISOEngine
 from fedora_builder.core.kickstart_manager import KickstartManager
+from fedora_builder.core.path_utils import resolve_from_project
 import logging
 
 logger = logging.getLogger("orchestrator")
@@ -67,27 +68,43 @@ class BuildOrchestrator:
         self.copr_repos = copr_repos or []
         self.extra_repos = extra_repos or []
         
-        self.workdir = Path(f"workdir/{self.arch}").resolve()
+        # Use resolve_from_project to get absolute path regardless of CWD
+        self.workdir = resolve_from_project(f"workdir/{self.arch}")
         self.target_root = self.workdir / "chroot"
         self.config = {"releasever": self.release.split("-")[-1] if self.release else "41", "basearch": self.arch}
 
     def _safe_clean_build_tree(self):
         # Preventively unmount any stale mountpoints before cleaning
         if self.mode != "mock" and os.geteuid() == 0:
-            for mount_path in [
+            build_host = self.workdir / "build_host"
+            subdirs = ["chroot", "iso_root", "output", "cache"]
+            output_dir = resolve_from_project("output")
+
+            stale_mounts = [
+                # Target rootfs virtual filesystems
                 self.target_root / "var" / "cache" / "dnf",
                 self.target_root / "dev" / "shm",
                 self.target_root / "dev" / "pts",
                 self.target_root / "dev",
                 self.target_root / "sys",
                 self.target_root / "proc",
-                self.workdir / "build_host" / "workdir",
-                self.workdir / "build_host" / "dev" / "shm",
-                self.workdir / "build_host" / "dev" / "pts",
-                self.workdir / "build_host" / "dev",
-                self.workdir / "build_host" / "sys",
-                self.workdir / "build_host" / "proc",
-            ]:
+                # build_host virtual filesystems
+                build_host / "dev" / "shm",
+                build_host / "dev" / "pts",
+                build_host / "dev",
+                build_host / "sys",
+                build_host / "proc",
+            ]
+            # build_host /workdir/<sub> bind-mounts
+            for sub in subdirs:
+                stale_mounts.append(build_host / "workdir" / sub)
+            stale_mounts.append(build_host / "workdir")
+            # Absolute-path mirrored bind-mounts inside build_host
+            for sub in subdirs:
+                host_sub = (self.workdir / sub) if sub != "output" else output_dir
+                stale_mounts.append(build_host / host_sub.relative_to("/"))
+
+            for mount_path in stale_mounts:
                 if mount_path.exists():
                     subprocess.run(["umount", "-l", "-f", str(mount_path)], capture_output=True)
 
@@ -106,6 +123,30 @@ class BuildOrchestrator:
 
     def validate(self) -> Dict[str, Any]:
         return {"valid": True, "errors": [], "summary": {}}
+
+    def generate_kickstart_only(self, output_name: Optional[str] = None) -> Path:
+        """Generate a Kickstart (.ks) file without performing a full build."""
+        from fedora_builder.core.config_loader import ConfigLoader
+        loader = ConfigLoader()
+        config = loader.assemble_build_config(
+            global_config_path=resolve_from_project(self.config_path),
+            architecture=self.arch,
+            release=self.release or "fedora-41",
+            desktop=self.desktop,
+            kernel=self.kernel,
+            bootloader=self.bootloader,
+            variant=self.variant,
+            package_profiles=self.package_profiles,
+            service_profiles=self.service_profiles,
+            repo_profiles=self.repo_profiles,
+            live_profile=self.live_profile,
+        )
+        ks_mgr = KickstartManager(config)
+        name = output_name or f"fedora-{self.arch}"
+        ks_path = resolve_from_project("output") / f"{name}.ks"
+        ks_path.parent.mkdir(parents=True, exist_ok=True)
+        ks_mgr.write(ks_path)
+        return ks_path
 
     def build(self, output_name: Optional[str] = None) -> Path:
         if output_name:

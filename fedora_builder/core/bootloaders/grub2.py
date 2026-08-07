@@ -2,13 +2,14 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class Grub2Bootloader:
-    def __init__(self, config: Dict[str, Any], arch: str, iso_uuid: str = ""):
+    def __init__(self, config: Dict[str, Any], arch: str, iso_uuid: str = "", toolchain=None):
         self.config = config
         self.arch = arch
         self.iso_uuid = iso_uuid
+        self.toolchain = toolchain  # ToolchainManager instance for isolated execution
 
     def generate_grub_cfg(self, kernel_name: str, initramfs_name: str, iso_label: str, kernel_params: str) -> str:
         cfg = "set default=0\nset timeout=5\n\n"
@@ -28,14 +29,28 @@ class Grub2Bootloader:
 
     def generate_efiboot_img(self, iso_staging: Path, effective_root: Path) -> Path:
         img_path = iso_staging / "images" / "efiboot.img"
-        if not shutil.which("mkfs.fat"):
-            img_path.parent.mkdir(parents=True, exist_ok=True)
-            img_path.touch()
-            return img_path
-            
         img_path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["dd", "if=/dev/zero", f"of={img_path}", "bs=1M", "count=10"])
-        subprocess.run(["mkfs.fat", "-F", "12", "-n", "EFI", str(img_path)])
+
+        if self.toolchain and self.toolchain.mode != "mock":
+            # Run mkfs.fat/mformat inside the isolated build_host where dosfstools is installed
+            try:
+                self.toolchain.run_in_build_host(
+                    ["dd", "if=/dev/zero", f"of={img_path}", "bs=1M", "count=10"],
+                    check=True,
+                )
+                self.toolchain.run_in_build_host(
+                    ["mkfs.fat", "-F", "12", "-n", "EFI", str(img_path)],
+                    check=True,
+                )
+                return img_path
+            except Exception as e:
+                import logging
+                logging.getLogger("grub2").warning(f"mkfs.fat in build_host failed ({e}), creating empty efiboot.img placeholder.")
+                img_path.touch()
+                return img_path
+
+        # mock mode or no toolchain — create placeholder
+        img_path.touch()
         return img_path
 
     def prepare_files(self, iso_staging: Path, rootfs: Path):

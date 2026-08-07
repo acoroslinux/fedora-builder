@@ -8,6 +8,7 @@ import logging
 from fedora_builder.core.toolchain_manager import ToolchainManager
 from fedora_builder.core.bootloaders.grub2 import Grub2Bootloader
 from fedora_builder.core.disk_engine import DiskEngine
+from fedora_builder.core.path_utils import resolve_from_project as _resolve_from_project
 
 logger = logging.getLogger("iso_engine")
 
@@ -202,7 +203,11 @@ class ISOEngine:
         squashfs_path = self.iso_staging / "LiveOS" / "squashfs.img"
         self._create_squashfs(self.target_root, squashfs_path)
         
-        grub = Grub2Bootloader(self.config, self.config.get("basearch", "x86_64"))
+        grub = Grub2Bootloader(
+            self.config,
+            self.config.get("basearch", "x86_64"),
+            toolchain=self.toolchain,
+        )
         iso_label = self._get_iso_label()
         kernel_params = self._get_kernel_params()
         
@@ -259,12 +264,12 @@ class ISOEngine:
         return iso_path
 
     def build_tarball(self) -> Path:
-        out_path = Path(f"output/{self.output_name}.tar.xz")
+        out_path = _resolve_from_project(f"output/{self.output_name}.tar.xz")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         if self.mode == "mock":
             out_path.touch()
             return out_path
-            
+
         env = os.environ.copy()
         env["XZ_OPT"] = f"-T0 -{self.config.get('compression_level', '6')}"
         subprocess.run(["tar", "-cJf", str(out_path), "-C", str(self.target_root), "."], env=env, check=True)
@@ -275,7 +280,7 @@ class ISOEngine:
         return engine.build_disk_image()
 
     def build_container(self) -> Path:
-        out_path = Path(f"output/{self.output_name}-container.tar")
+        out_path = _resolve_from_project(f"output/{self.output_name}-container.tar")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         if self.mode == "mock":
             out_path.touch()

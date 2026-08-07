@@ -33,8 +33,14 @@ class KickstartManager:
 
     def _post_section(self) -> str:
         res = "%post\n"
-        services = self.config.get("services", [])
-        for s in services:
+        services = self.config.get("services", {})
+        if isinstance(services, dict):
+            enabled = services.get("enable", [])
+        elif isinstance(services, list):
+            enabled = services
+        else:
+            enabled = []
+        for s in enabled:
             res += f"systemctl enable {s}\n"
         res += "%end\n"
         return res

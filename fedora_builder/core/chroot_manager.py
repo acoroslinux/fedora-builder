@@ -179,7 +179,13 @@ class ChrootManager:
             chroot_env.update(env)
 
         if self.toolchain:
-            return self.toolchain.run_in_build_host(command, env=chroot_env, check=check)
+            # Use build_host's chroot binary to enter target_root, keeping full isolation.
+            # The target_root path must be visible inside build_host (it is bind-mounted there).
+            if isinstance(command, str):
+                chroot_cmd = ["chroot", str(self.target_root), "/bin/sh", "-c", command]
+            else:
+                chroot_cmd = ["chroot", str(self.target_root)] + list(command)
+            return self.toolchain.run_in_build_host(chroot_cmd, env=chroot_env, check=check)
 
         return CommandRunner.run_chroot_stream(
             chroot_path=str(self.target_root),
