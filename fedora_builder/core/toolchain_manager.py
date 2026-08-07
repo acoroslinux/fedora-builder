@@ -184,6 +184,9 @@ class ToolchainManager:
         # Copy resolv.conf so DNF inside build_host can reach the network
         self._copy_resolv_conf()
 
+        # Mount proc, sys, dev before installing packages so RPM scriptlets run cleanly
+        self.mount_virtual_fs()
+
         # Install all required build tools inside the build_host
         self._install_build_tools()
 
