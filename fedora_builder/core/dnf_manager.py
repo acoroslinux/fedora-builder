@@ -11,10 +11,18 @@ class DNFManagerError(Exception):
     pass
 
 class DNFManager:
-    def __init__(self, chroot: ChrootManager, config: Dict[str, Any]):
+    def __init__(self, chroot: ChrootManager, config: Dict[str, Any], toolchain=None):
         self.chroot = chroot
         self.config = config
         self.target_root = chroot.target_root
+        self.toolchain = toolchain
+
+    def _run_dnf(self, args: List[str]) -> subprocess.CompletedProcess:
+        """Run DNF using the isolated build_host toolchain if available, otherwise host fallback."""
+        if self.toolchain:
+            return self.toolchain.run_tool("dnf", args)
+        else:
+            return subprocess.run(["dnf"] + args)
 
     def configure_dnf_conf(self):
         dnf_conf_dir = self.target_root / "etc" / "dnf"
@@ -86,9 +94,9 @@ class DNFManager:
         url = rpmfusion_config.get("install_package")
         if not url:
             return
-        cmd = ["dnf", "--installroot", str(self.target_root), "-y", "install", url]
+        args = ["--installroot", str(self.target_root), "-y", "install", url]
         if self.chroot.mode != "mock":
-            subprocess.run(cmd, check=True)
+            self._run_dnf(args)
 
     def bootstrap_rootfs(self, releasever: str, basearch: str):
         if self.chroot.mode == "mock":
@@ -96,12 +104,12 @@ class DNFManager:
             for d in ["etc/dnf", "etc/yum.repos.d", "boot", "usr/bin", "var/cache/dnf"]:
                 (self.target_root / d).mkdir(parents=True, exist_ok=True)
             return
-        cmd = [
-            "dnf", f"--installroot={self.target_root}", f"--releasever={releasever}",
+        args = [
+            f"--installroot={self.target_root}", f"--releasever={releasever}",
             f"--forcearch={basearch}", "--setopt=install_weak_deps=False", "--nodocs",
             "-y", "install", "@core"
         ]
-        res = subprocess.run(cmd)
+        res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError(f"Bootstrap failed: {res.returncode}")
 
@@ -113,8 +121,8 @@ class DNFManager:
             return
         if self.chroot.mode == "mock":
             return
-        cmd = ["dnf", "--installroot", str(self.target_root), "-y", "install"] + real_pkgs
-        res = subprocess.run(cmd)
+        args = ["--installroot", str(self.target_root), "-y", "install"] + real_pkgs
+        res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Package installation failed")
 
@@ -124,8 +132,8 @@ class DNFManager:
         real_groups = [g.lstrip("@") for g in groups]
         if self.chroot.mode == "mock":
             return
-        cmd = ["dnf", "--installroot", str(self.target_root), "-y", "groupinstall"] + real_groups
-        res = subprocess.run(cmd)
+        args = ["--installroot", str(self.target_root), "-y", "groupinstall"] + real_groups
+        res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Group installation failed")
 

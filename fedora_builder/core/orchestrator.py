@@ -104,7 +104,7 @@ class BuildOrchestrator:
         chroot.mount_virtual_fs()
         
         try:
-            dnf = DNFManager(chroot, self.config)
+            dnf = DNFManager(chroot, self.config, toolchain=toolchain)
             dnf.bootstrap_rootfs(self.config["releasever"], self.config["basearch"])
             dnf.configure_repos(self.config.get("repos", []))
             
