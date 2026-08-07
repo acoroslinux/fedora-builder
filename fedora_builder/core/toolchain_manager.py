@@ -622,12 +622,17 @@ class ToolchainManager:
 
     def _verify_build_tools(self) -> None:
         """Verify that critical tools are present in build_host after installation."""
-        required = {
-            "mksquashfs": self.build_host_dir / "usr" / "bin" / "mksquashfs",
-            "xorriso":    self.build_host_dir / "usr" / "bin" / "xorriso",
-            "dnf":        self.build_host_dir / "usr" / "bin" / "dnf",
-        }
-        missing = [name for name, path in required.items() if not path.exists()]
+        required_tools = ["mksquashfs", "xorriso", "dnf"]
+        missing = []
+        for tool in required_tools:
+            found = False
+            for subdir in ["usr/sbin", "usr/bin", "sbin", "bin"]:
+                if (self.build_host_dir / subdir / tool).exists():
+                    found = True
+                    break
+            if not found:
+                missing.append(tool)
+
         if missing:
             raise ToolchainManagerError(
                 f"Build tool verification failed — missing in build_host: "
