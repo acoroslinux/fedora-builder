@@ -67,7 +67,6 @@ _BUILD_HOST_PACKAGES = [
     "shim-x64",
     # Legacy BIOS boot (ISOLINUX)
     "syslinux",
-    "syslinux-utils",
     # EFI FAT image tooling
     "mtools",
     "dosfstools",
@@ -495,10 +494,15 @@ class ToolchainManager:
                 logger.info(
                     f"Resolving platform manifest for {target_oci_arch}: digest={digest[:19]}..."
                 )
-                url = _FEDORA_OCI_BLOB_URL_TEMPLATE.format(digest=digest).replace(
+                url_manifest = _FEDORA_OCI_BLOB_URL_TEMPLATE.format(digest=digest).replace(
                     "/blobs/", "/manifests/"
                 )
-                return self._fetch_json(url)
+                url_blob = _FEDORA_OCI_BLOB_URL_TEMPLATE.format(digest=digest)
+                try:
+                    return self._fetch_json(url_manifest)
+                except Exception:
+                    logger.info("  Manifest endpoint by digest failed, fetching via blobs endpoint...")
+                    return self._fetch_json(url_blob)
 
         raise ToolchainManagerError(
             f"No manifest found in OCI index for architecture '{target_oci_arch}'."
