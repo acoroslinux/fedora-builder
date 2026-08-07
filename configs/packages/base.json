@@ -1,6 +1,9 @@
 {
   "packages": [
     "@core",
+    "kernel",
+    "kernel-core",
+    "kernel-modules",
     "sudo",
     "polkit",
     "dbus",

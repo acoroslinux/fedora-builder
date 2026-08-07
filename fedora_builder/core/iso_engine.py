@@ -63,18 +63,21 @@ class ISOEngine:
         return kernel or "vmlinuz", initramfs or "initramfs.img"
 
     def _create_squashfs(self, source_dir: Path, output_path: Path):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         if self.mode == "mock":
-            output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.touch()
             return
 
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         if output_path.exists():
             output_path.unlink()
 
         compression = self.config.get("compression", "zstd")
-        # mksquashfs runs inside build_host via toolchain.run_tool()
-        # Paths are relative to workdir (bind-mounted as /workdir inside build_host)
+        # Ensure build_host isolated chroot also sees the target directory
+        if hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:
+            rel_parent = output_path.parent.relative_to(self.workdir) if output_path.is_relative_to(self.workdir) else None
+            if rel_parent:
+                (self.toolchain.build_host_dir / "workdir" / rel_parent).mkdir(parents=True, exist_ok=True)
+
         self.toolchain.run_tool(
             "mksquashfs",
             [str(source_dir), str(output_path), "-comp", compression, "-b", "1M", "-noappend"],
