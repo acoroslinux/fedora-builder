@@ -79,7 +79,14 @@ class BuildOrchestrator:
     def validate(self) -> Dict[str, Any]:
         return {"valid": True, "errors": [], "summary": {}}
 
-    def build(self) -> Path:
+    def build(self, output_name: Optional[str] = None) -> Path:
+        if output_name:
+            if output_name.endswith((".iso", ".img", ".tar.xz", ".tar")):
+                output_name = Path(output_name).stem.replace(".tar", "")
+            artifact_name = output_name
+        else:
+            artifact_name = f"fedora-{self.arch}"
+
         if self.clean:
             self._safe_clean_build_tree()
             
@@ -119,7 +126,7 @@ class BuildOrchestrator:
                 ks_mgr.write(ks_path)
                 
             iso_engine = ISOEngine(
-                self.workdir, self.target_root, f"fedora-{self.arch}", 
+                self.workdir, self.target_root, artifact_name, 
                 self.config, self.mode, toolchain
             )
             
