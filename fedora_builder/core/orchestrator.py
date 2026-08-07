@@ -1,4 +1,6 @@
+import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fedora_builder.core.chroot_manager import ChrootManager
