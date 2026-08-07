@@ -100,18 +100,34 @@ class DNFManager:
 
     def bootstrap_rootfs(self, releasever: str, basearch: str):
         if self.chroot.mode == "mock":
-            self.target_root.mkdir(parents=True, exist_ok=True)
-            for d in ["etc/dnf", "etc/yum.repos.d", "boot", "usr/bin", "var/cache/dnf"]:
-                (self.target_root / d).mkdir(parents=True, exist_ok=True)
+            try:
+                self.target_root.mkdir(parents=True, exist_ok=True)
+                for d in ["etc/dnf", "etc/yum.repos.d", "boot", "usr/bin", "var/cache/dnf"]:
+                    (self.target_root / d).mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                logger.debug("Mock rootfs directory creation ignored due to root permissions.")
             return
         args = [
-            f"--installroot={self.target_root}", f"--releasever={releasever}",
-            f"--forcearch={basearch}", "--setopt=install_weak_deps=False", "--nodocs",
-            "-y", "install", "@core"
+            f"--installroot={self.target_root}",
+            f"--releasever={releasever}",
+            f"--forcearch={basearch}",
+            "--use-host-config",
+            "--setopt=install_weak_deps=False",
+            "--nodocs",
+            "-y",
+            "install",
+            "@core",
         ]
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError(f"Bootstrap failed: {res.returncode}")
+
+    def _get_base_dnf_args(self) -> List[str]:
+        args = ["--installroot", str(self.target_root)]
+        target_repos = list((self.target_root / "etc" / "yum.repos.d").glob("*.repo")) if (self.target_root / "etc" / "yum.repos.d").exists() else []
+        if not target_repos:
+            args.append("--use-host-config")
+        return args
 
     def install_packages(self, packages: List[str]):
         if not packages:
@@ -121,7 +137,7 @@ class DNFManager:
             return
         if self.chroot.mode == "mock":
             return
-        args = ["--installroot", str(self.target_root), "-y", "install"] + real_pkgs
+        args = self._get_base_dnf_args() + ["-y", "install"] + real_pkgs
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Package installation failed")
@@ -132,7 +148,7 @@ class DNFManager:
         real_groups = [g.lstrip("@") for g in groups]
         if self.chroot.mode == "mock":
             return
-        args = ["--installroot", str(self.target_root), "-y", "groupinstall"] + real_groups
+        args = self._get_base_dnf_args() + ["-y", "groupinstall"] + real_groups
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Group installation failed")

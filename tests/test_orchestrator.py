@@ -16,7 +16,7 @@ from fedora_builder.core.path_utils import resolve_from_project
 
 # ── Helpers ──────────────────────────────────────────────────────────────────────
 
-def make_orchestrator(**kwargs) -> BuildOrchestrator:
+def make_orchestrator(tmp_path=None, **kwargs) -> BuildOrchestrator:
     """Factory for BuildOrchestrator with sensible test defaults."""
     defaults = dict(
         arch="x86_64",
@@ -40,7 +40,11 @@ def make_orchestrator(**kwargs) -> BuildOrchestrator:
         copr_repos=[],
     )
     defaults.update(kwargs)
-    return BuildOrchestrator(**defaults)
+    orch = BuildOrchestrator(**defaults)
+    if tmp_path:
+        orch.workdir = tmp_path / orch.arch
+        orch.target_root = orch.workdir / "chroot"
+    return orch
 
 
 # ── test_orchestrator_construction ────────────────────────────────────────────────
@@ -99,28 +103,28 @@ class TestValidate:
 # ── test_build_mock_iso ───────────────────────────────────────────────────────────
 
 class TestBuildMockISO:
-    def test_mock_build_returns_path(self):
-        orch = make_orchestrator()
+    def test_mock_build_returns_path(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path)
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_gnome_iso(self):
-        orch = make_orchestrator(desktop="gnome", output_format="iso")
+    def test_mock_build_gnome_iso(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, desktop="gnome", output_format="iso")
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_kde_iso(self):
-        orch = make_orchestrator(desktop="kde", output_format="iso")
+    def test_mock_build_kde_iso(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, desktop="kde", output_format="iso")
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_xfce_iso(self):
-        orch = make_orchestrator(desktop="xfce", output_format="iso")
+    def test_mock_build_xfce_iso(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, desktop="xfce", output_format="iso")
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_no_desktop(self):
-        orch = make_orchestrator(desktop=None, output_format="iso")
+    def test_mock_build_no_desktop(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, desktop=None, output_format="iso")
         result = orch.build()
         assert isinstance(result, Path)
 
@@ -128,18 +132,18 @@ class TestBuildMockISO:
 # ── test_build_mock_formats ───────────────────────────────────────────────────────
 
 class TestBuildMockFormats:
-    def test_mock_build_img_format(self):
-        orch = make_orchestrator(output_format="img")
+    def test_mock_build_img_format(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, output_format="img")
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_tarball_format(self):
-        orch = make_orchestrator(output_format="tarball")
+    def test_mock_build_tarball_format(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, output_format="tarball")
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_container_format(self):
-        orch = make_orchestrator(output_format="container")
+    def test_mock_build_container_format(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, output_format="container")
         result = orch.build()
         assert isinstance(result, Path)
 
@@ -148,8 +152,8 @@ class TestBuildMockFormats:
 
 class TestBuildMockArchitectures:
     @pytest.mark.parametrize("arch", ["x86_64", "aarch64", "ppc64le", "s390x"])
-    def test_mock_build_for_arch(self, arch):
-        orch = make_orchestrator(arch=arch)
+    def test_mock_build_for_arch(self, tmp_path, arch):
+        orch = make_orchestrator(tmp_path=tmp_path, arch=arch)
         result = orch.build()
         assert isinstance(result, Path)
 
@@ -158,8 +162,8 @@ class TestBuildMockArchitectures:
 
 class TestBuildMockReleases:
     @pytest.mark.parametrize("release", ["fedora-40", "fedora-41", "rawhide"])
-    def test_mock_build_for_release(self, release):
-        orch = make_orchestrator(release=release)
+    def test_mock_build_for_release(self, tmp_path, release):
+        orch = make_orchestrator(tmp_path=tmp_path, release=release)
         result = orch.build()
         assert isinstance(result, Path)
 
@@ -168,8 +172,8 @@ class TestBuildMockReleases:
 
 class TestBuildMockVariants:
     @pytest.mark.parametrize("variant", ["live", "minimal", "server"])
-    def test_mock_build_for_variant(self, variant):
-        orch = make_orchestrator(variant=variant)
+    def test_mock_build_for_variant(self, tmp_path, variant):
+        orch = make_orchestrator(tmp_path=tmp_path, variant=variant)
         result = orch.build()
         assert isinstance(result, Path)
 
@@ -177,8 +181,9 @@ class TestBuildMockVariants:
 # ── test_build_with_extras ────────────────────────────────────────────────────────
 
 class TestBuildWithExtras:
-    def test_mock_build_with_rpmfusion(self):
+    def test_mock_build_with_rpmfusion(self, tmp_path):
         orch = make_orchestrator(
+            tmp_path=tmp_path,
             desktop="xfce",
             repo_profiles=["rpmfusion-free", "rpmfusion-nonfree"],
             package_profiles=["multimedia"],
@@ -186,44 +191,46 @@ class TestBuildWithExtras:
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_with_calamares(self):
+    def test_mock_build_with_calamares(self, tmp_path):
         orch = make_orchestrator(
+            tmp_path=tmp_path,
             desktop="gnome",
             with_calamares=True,
         )
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_generate_kickstart(self):
+    def test_mock_build_generate_kickstart(self, tmp_path):
         orch = make_orchestrator(
+            tmp_path=tmp_path,
             desktop="gnome",
             generate_kickstart=True,
         )
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_with_copr(self):
-        orch = make_orchestrator(copr_repos=["arivenitez/calamares"])
+    def test_mock_build_with_copr(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, copr_repos=["arivenitez/calamares"])
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_no_manifest(self):
-        orch = make_orchestrator(generate_manifest=False)
+    def test_mock_build_no_manifest(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, generate_manifest=False)
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_no_clean(self):
-        orch = make_orchestrator(clean=False)
+    def test_mock_build_no_clean(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, clean=False)
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_zstd_compression(self):
-        orch = make_orchestrator(compression="zstd")
+    def test_mock_build_zstd_compression(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, compression="zstd")
         result = orch.build()
         assert isinstance(result, Path)
 
-    def test_mock_build_xz_compression(self):
-        orch = make_orchestrator(compression="xz")
+    def test_mock_build_xz_compression(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, compression="xz")
         result = orch.build()
         assert isinstance(result, Path)
 
@@ -234,7 +241,7 @@ class TestAllDesktops:
     @pytest.mark.parametrize("desktop", [
         "gnome", "kde", "xfce", "mate", "cinnamon", "lxqt", "i3", "sway", "hyprland"
     ])
-    def test_mock_build_all_desktops(self, desktop):
-        orch = make_orchestrator(desktop=desktop)
+    def test_mock_build_all_desktops(self, tmp_path, desktop):
+        orch = make_orchestrator(tmp_path=tmp_path, desktop=desktop)
         result = orch.build()
         assert isinstance(result, Path)

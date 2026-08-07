@@ -91,11 +91,18 @@ class BuildOrchestrator:
                 if mount_path.exists():
                     subprocess.run(["umount", "-l", "-f", str(mount_path)], capture_output=True)
 
-        if self.target_root.exists():
-            shutil.rmtree(self.target_root, ignore_errors=True)
-        iso_root = self.workdir / "iso_root"
-        if iso_root.exists():
-            shutil.rmtree(iso_root, ignore_errors=True)
+        try:
+            if self.target_root.exists():
+                shutil.rmtree(self.target_root, ignore_errors=True)
+        except Exception:
+            pass
+
+        try:
+            iso_root = self.workdir / "iso_root"
+            if iso_root.exists():
+                shutil.rmtree(iso_root, ignore_errors=True)
+        except Exception:
+            pass
 
     def validate(self) -> Dict[str, Any]:
         return {"valid": True, "errors": [], "summary": {}}
