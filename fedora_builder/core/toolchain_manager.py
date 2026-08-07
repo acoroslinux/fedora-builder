@@ -281,7 +281,19 @@ class ToolchainManager:
                 stdout="[MOCK TOOL OUTPUT]", stderr=""
             )
 
-        full_args = [tool] + [str(a) for a in args]
+        translated_args = []
+        for arg in args:
+            arg_str = str(arg)
+            try:
+                arg_path = Path(arg_str).resolve()
+                if arg_path.is_relative_to(self.workdir_base):
+                    rel = arg_path.relative_to(self.workdir_base)
+                    arg_str = str(Path("/workdir") / rel)
+            except Exception:
+                pass
+            translated_args.append(arg_str)
+
+        full_args = [tool] + translated_args
         return self.run_in_build_host(full_args, check=True)
 
     def mount_virtual_fs(self) -> None:
