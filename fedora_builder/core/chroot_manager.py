@@ -173,12 +173,17 @@ class ChrootManager:
             logger.info(f"[Chroot] [MOCK] Command inside chroot: {command}")
             return subprocess.CompletedProcess(command if isinstance(command, list) else [command], 0)
 
+        # Guarantee standard Linux PATH inside chroot execution
+        chroot_env = {"PATH": "/usr/bin:/usr/sbin:/bin:/sbin"}
+        if env:
+            chroot_env.update(env)
+
         if self.toolchain:
-            return self.toolchain.run_in_build_host(command, env=env, check=check)
+            return self.toolchain.run_in_build_host(command, env=chroot_env, check=check)
 
         return CommandRunner.run_chroot_stream(
             chroot_path=str(self.target_root),
             command=command,
-            env=env,
+            env=chroot_env,
             mode=self.mode
         )

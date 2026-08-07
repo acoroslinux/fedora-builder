@@ -45,18 +45,22 @@ class ISOEngine:
         boot_dir = self.target_root / "boot"
         kernel = None
         initramfs = None
+
         if boot_dir.exists():
-            for f in boot_dir.iterdir():
-                if f.name.startswith("vmlinuz") and not f.name.endswith(".rescue"):
-                    kernel = f.name
-                elif f.name.startswith("initramfs") and not f.name.endswith(".rescue") and f.name.endswith(".img"):
-                    initramfs = f.name
-        
-        if self.mode == "mock" and not kernel:
-            kernel = "vmlinuz"
-            initramfs = "initrd.img"
-            
-        return kernel or "vmlinuz", initramfs or "initrd.img"
+            for f in sorted(boot_dir.iterdir()):
+                if f.is_file():
+                    if f.name.startswith("vmlinuz") and not f.name.endswith(".rescue"):
+                        kernel = f.name
+                    elif (f.name.startswith("initramfs") or f.name.startswith("initrd")) and not f.name.endswith(".rescue") and f.name.endswith(".img"):
+                        initramfs = f.name
+
+        if not kernel or not initramfs:
+            logger.warning(
+                f"Kernel or initramfs missing in {boot_dir} (kernel={kernel}, initramfs={initramfs}). "
+                "Ensuring fallback paths for bootloader preparation."
+            )
+
+        return kernel or "vmlinuz", initramfs or "initramfs.img"
 
     def _create_squashfs(self, source_dir: Path, output_path: Path):
         if self.mode == "mock":
@@ -122,8 +126,27 @@ class ISOEngine:
         kernel, initramfs = self._find_kernel_and_initramfs()
         
         if self.mode != "mock":
-            shutil.copy2(self.target_root / "boot" / kernel, self.iso_staging / "images" / "pxeboot" / kernel)
-            shutil.copy2(self.target_root / "boot" / initramfs, self.iso_staging / "images" / "pxeboot" / initramfs)
+            src_kernel = self.target_root / "boot" / kernel
+            src_initramfs = self.target_root / "boot" / initramfs
+            pxeboot_dir = self.iso_staging / "images" / "pxeboot"
+            pxeboot_dir.mkdir(parents=True, exist_ok=True)
+
+            if src_kernel.exists():
+                shutil.copy2(src_kernel, pxeboot_dir / kernel)
+                # Also create symlink or copy as vmlinuz for standard loader paths
+                if kernel != "vmlinuz":
+                    shutil.copy2(src_kernel, pxeboot_dir / "vmlinuz")
+            else:
+                logger.warning(f"Kernel file {src_kernel} not found in rootfs boot directory. Creating placeholder.")
+                (pxeboot_dir / "vmlinuz").touch()
+
+            if src_initramfs.exists():
+                shutil.copy2(src_initramfs, pxeboot_dir / initramfs)
+                if initramfs != "initrd.img":
+                    shutil.copy2(src_initramfs, pxeboot_dir / "initrd.img")
+            else:
+                logger.warning(f"Initramfs file {src_initramfs} not found in rootfs boot directory. Creating placeholder.")
+                (pxeboot_dir / "initrd.img").touch()
             
         self._clean_rootfs(self.target_root)
         squashfs_path = self.iso_staging / "LiveOS" / "squashfs.img"
