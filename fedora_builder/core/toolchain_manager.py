@@ -326,28 +326,27 @@ class ToolchainManager:
             if res.returncode != 0 and "already mounted" not in res.stderr:
                 logger.warning(f"Could not mount {target}: {res.stderr.strip()}")
 
-        # Mirror the project root directory inside build_host so absolute host paths
-        # (e.g. /iso-builder/fedora-builder/workdir/x86_64/chroot) work identically inside build_host.
-        project_root = self.workdir_base.parent.parent  # /iso-builder/fedora-builder
-        project_mount_in_chroot = self.build_host_dir / project_root.relative_to("/")
-        project_mount_in_chroot.mkdir(parents=True, exist_ok=True)
-
-        res = subprocess.run(
-            ["mount", "--bind", str(project_root), str(project_mount_in_chroot)],
-            capture_output=True, text=True,
-        )
-        if res.returncode != 0 and "already mounted" not in res.stderr:
-            logger.warning(f"Could not bind-mount project root {project_root} into build_host: {res.stderr.strip()}")
-
-        # Also bind-mount /workdir for backward compatibility
+        # Bind-mount target leaf paths explicitly both to /workdir/<subname> and to matching host absolute paths inside build_host
+        # to avoid infinite recursion of build_host inside itself.
+        subdirs = ["chroot", "iso_root", "output", "cache"]
+        
+        # 1. Bind-mount to /workdir/<subname> inside build_host
         workdir_mount_base = self.build_host_dir / "workdir"
         workdir_mount_base.mkdir(parents=True, exist_ok=True)
-        for sub in ["chroot", "iso_root", "output", "cache"]:
-            host_sub = self.workdir_base / sub
+        for sub in subdirs:
+            host_sub = self.workdir_base / sub if sub != "output" else self.workdir_base.parent.parent / "output"
             host_sub.mkdir(parents=True, exist_ok=True)
             chroot_sub = workdir_mount_base / sub
             chroot_sub.mkdir(parents=True, exist_ok=True)
             subprocess.run(["mount", "--bind", str(host_sub), str(chroot_sub)], capture_output=True)
+
+        # 2. Bind-mount to exact absolute host path inside build_host for transparent path resolution
+        for sub in subdirs:
+            host_sub = self.workdir_base / sub if sub != "output" else self.workdir_base.parent.parent / "output"
+            host_sub.mkdir(parents=True, exist_ok=True)
+            target_in_chroot = self.build_host_dir / host_sub.relative_to("/")
+            target_in_chroot.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["mount", "--bind", str(host_sub), str(target_in_chroot)], capture_output=True)
 
         self.is_mounted = True
 
@@ -360,22 +359,27 @@ class ToolchainManager:
 
         logger.info(f"Unmounting virtual filesystems from build_host: {self.build_host_dir}")
 
-        project_root = self.workdir_base.parent.parent
-        project_mount_in_chroot = self.build_host_dir / project_root.relative_to("/")
+        subdirs = ["chroot", "iso_root", "output", "cache"]
+        targets = []
 
-        targets = [
-            project_mount_in_chroot,
-            self.build_host_dir / "workdir" / "cache",
-            self.build_host_dir / "workdir" / "output",
-            self.build_host_dir / "workdir" / "iso_root",
-            self.build_host_dir / "workdir" / "chroot",
+        # Absolute mirrored targets
+        for sub in subdirs:
+            host_sub = self.workdir_base / sub if sub != "output" else self.workdir_base.parent.parent / "output"
+            targets.append(self.build_host_dir / host_sub.relative_to("/"))
+
+        # /workdir targets
+        for sub in subdirs:
+            targets.append(self.build_host_dir / "workdir" / sub)
+
+        targets.extend([
             self.build_host_dir / "workdir",
             self.build_host_dir / "dev" / "shm",
             self.build_host_dir / "dev" / "pts",
             self.build_host_dir / "dev",
             self.build_host_dir / "sys",
             self.build_host_dir / "proc",
-        ]
+        ])
+
         for target in targets:
             if target.exists():
                 subprocess.run(["umount", "-l", str(target)], capture_output=True)
