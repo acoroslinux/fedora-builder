@@ -1,0 +1,15 @@
+{
+  "arch": "x86_64",
+  "basearch": "x86_64",
+  "releasearch": "x86_64",
+  "packages": ["grub2-pc", "grub2-efi-x64", "grub2-efi-x64-modules", "shim-x64", "syslinux"],
+  "kernel_arch": "x86_64",
+  "efi_arch": "x64",
+  "efi_bootfile": "BOOTX64.EFI",
+  "grub_target_bios": "i386-pc",
+  "grub_target_efi": "x86_64-efi",
+  "dnf_baseurl_arch": "x86_64",
+  "supports_bios": true,
+  "supports_uefi": true,
+  "requires_qemu": false
+}

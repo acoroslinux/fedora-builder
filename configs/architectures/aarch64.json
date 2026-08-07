@@ -1,0 +1,15 @@
+{
+  "arch": "aarch64",
+  "basearch": "aarch64",
+  "releasearch": "aarch64",
+  "packages": ["grub2-efi-aa64", "grub2-efi-aa64-modules", "shim-aa64"],
+  "kernel_arch": "aarch64",
+  "efi_arch": "aa64",
+  "efi_bootfile": "BOOTAA64.EFI",
+  "grub_target_bios": null,
+  "grub_target_efi": "arm64-efi",
+  "dnf_baseurl_arch": "aarch64",
+  "supports_bios": false,
+  "supports_uefi": true,
+  "requires_qemu": true
+}

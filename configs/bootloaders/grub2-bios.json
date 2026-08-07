@@ -1,0 +1,9 @@
+{
+  "bootloader": "grub2-bios",
+  "packages": ["grub2-common", "grub2-pc", "grub2-tools", "syslinux"],
+  "bios_enabled": true,
+  "uefi_enabled": false,
+  "secure_boot": false,
+  "timeout": 10,
+  "default_entry": "live"
+}

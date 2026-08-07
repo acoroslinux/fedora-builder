@@ -1,0 +1,14 @@
+{
+  "packages": [
+    "libvirt",
+    "qemu-kvm",
+    "virt-manager",
+    "virt-viewer",
+    "bridge-utils",
+    "vagrant",
+    "podman",
+    "buildah",
+    "skopeo",
+    "guestfs-tools"
+  ]
+}

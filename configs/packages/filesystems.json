@@ -1,0 +1,15 @@
+{
+  "packages": [
+    "e2fsprogs",
+    "dosfstools",
+    "xfsprogs",
+    "btrfs-progs",
+    "ntfs-3g",
+    "exfatprogs",
+    "gvfs",
+    "gvfs-fuse",
+    "gvfs-smb",
+    "gvfs-mtp",
+    "udisks2"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "desktop": "i3",
+  "display_name": "i3wm",
+  "packages": [
+    "i3",
+    "i3status",
+    "i3lock",
+    "lightdm",
+    "lightdm-gtk",
+    "dmenu",
+    "xterm",
+    "picom",
+    "feh",
+    "polybar",
+    "rofi",
+    "rxvt-unicode",
+    "alacritty"
+  ],
+  "groups": [],
+  "display_manager": "lightdm",
+  "display_manager_package": "lightdm",
+  "session": "i3",
+  "session_type": "x11",
+  "services_enable": ["lightdm"],
+  "use_wayland": false
+}

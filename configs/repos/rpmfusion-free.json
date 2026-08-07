@@ -1,0 +1,11 @@
+{
+  "repo_id": "rpmfusion-free",
+  "repo_name": "RPM Fusion for Fedora $releasever - Free",
+  "metalink": "https://mirrors.rpmfusion.org/metalink?repo=free-fedora-$releasever&arch=$basearch",
+  "enabled": true,
+  "gpgcheck": true,
+  "gpgkey": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-free-fedora-$releasever",
+  "metadata_expire": "7d",
+  "install_package": "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$releasever.noarch.rpm",
+  "packages": ["rpmfusion-free-release"]
+}

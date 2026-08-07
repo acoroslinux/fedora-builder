@@ -1,0 +1,14 @@
+{
+  "packages": [
+    "NetworkManager-openvpn",
+    "NetworkManager-vpnc",
+    "openvpn",
+    "wireguard-tools",
+    "nmap",
+    "net-tools",
+    "bind-utils",
+    "traceroute",
+    "iputils",
+    "iproute"
+  ]
+}

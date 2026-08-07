@@ -1,0 +1,11 @@
+{
+  "repo_id": "rpmfusion-nonfree",
+  "repo_name": "RPM Fusion for Fedora $releasever - Nonfree",
+  "metalink": "https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-$releasever&arch=$basearch",
+  "enabled": true,
+  "gpgcheck": true,
+  "gpgkey": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-nonfree-fedora-$releasever",
+  "metadata_expire": "7d",
+  "install_package": "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$releasever.noarch.rpm",
+  "packages": ["rpmfusion-nonfree-release"]
+}

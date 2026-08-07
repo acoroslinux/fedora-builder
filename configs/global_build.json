@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "name": "Fedora-Builder Master Config",
+    "version": "1.0.0",
+    "description": "Global manifest for building modular Fedora Linux ISOs and images."
+  },
+  "defaults": {
+    "release": "fedora-41",
+    "desktop": "gnome",
+    "kernel": "kernel",
+    "bootloader": "grub2-hybrid",
+    "variant": "live",
+    "package_profiles": ["base", "networking", "audio", "bluetooth", "printing", "filesystems"],
+    "service_profiles": ["base", "network", "hardware"],
+    "live_user": "liveuser",
+    "live_password": "live",
+    "compression": "zstd",
+    "generate_manifest": true
+  },
+  "system": {
+    "workdir_base": "workdir",
+    "iso_label": "FEDORA-LIVE",
+    "iso_publisher": "AcorOS Linux",
+    "iso_preparer": "fedora-builder",
+    "selinux_mode": "permissive",
+    "locale": "en_US.UTF-8",
+    "timezone": "UTC",
+    "keymap": "us",
+    "hostname": "fedora-live"
+  },
+  "boot": {
+    "kernel_params": "rd.live.image quiet rhgb",
+    "timeout": 10
+  },
+  "stage3": {
+    "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/{releasever}/Everything/{basearch}/os/"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "variant": "server",
+  "description": "Headless server environment",
+  "packages": [],
+  "groups": ["@server-product-environment"],
+  "services_enable": ["sshd", "firewalld", "systemd-networkd", "systemd-resolved"],
+  "live_media": false,
+  "include_installer": true,
+  "squashfs_root": false,
+  "boot_params": "quiet"
+}

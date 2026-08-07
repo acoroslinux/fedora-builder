@@ -1,0 +1,10 @@
+{
+  "variant": "live",
+  "description": "Bootable live desktop image with Calamares installer",
+  "packages": ["dracut-live", "dracut-squash", "livecd-tools"],
+  "services_enable": [],
+  "live_media": true,
+  "include_installer": true,
+  "squashfs_root": true,
+  "boot_params": "rd.live.image quiet rhgb"
+}

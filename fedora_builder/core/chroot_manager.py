@@ -1,0 +1,148 @@
+import os
+import platform
+import shutil
+import subprocess
+from pathlib import Path
+from typing import List, Optional
+import logging
+
+# We assume CommandRunner is available in fedora_builder.core.command_runner
+try:
+    from fedora_builder.core.command_runner import CommandRunner
+except ImportError:
+    class CommandRunner:
+        @staticmethod
+        def run_chroot_stream(chroot_path, command, env=None, mode="mock"):
+            if mode == "mock":
+                return subprocess.CompletedProcess(command, 0)
+            cmd = ["chroot", chroot_path] + (command if isinstance(command, list) else command.split())
+            return subprocess.run(cmd, env=env)
+
+logger = logging.getLogger("chroot_manager")
+
+_QEMU_STATIC_MAP = {
+    "aarch64": "qemu-aarch64-static",
+    "arm64":   "qemu-aarch64-static",
+    "ppc64le": "qemu-ppc64le-static",
+    "s390x":   "qemu-s390x-static",
+}
+
+def _host_arch() -> str:
+    return platform.machine().lower()
+
+class ChrootManagerError(Exception):
+    pass
+
+class ChrootManager:
+    def __init__(self, target_root: Path, mode: str = "mock", cache_dir: Optional[Path] = None, arch: Optional[str] = None):
+        self.target_root = Path(target_root).resolve()
+        self.mode = mode.lower()
+        self.cache_dir = Path(cache_dir).resolve() if cache_dir else None
+        self.is_mounted = False
+        if arch:
+            self.arch = arch.lower()
+        else:
+            self.arch = self.target_root.parent.name.lower()
+
+    def _setup_qemu_static(self):
+        host = _host_arch()
+        target = self.arch
+
+        if host in ("x86_64", "amd64") and target in ("x86_64", "amd64"):
+            return
+        if host == target:
+            return
+
+        qemu_bin_name = _QEMU_STATIC_MAP.get(target)
+        if not qemu_bin_name:
+            logger.debug(f"No QEMU static binary mapping for {target}.")
+            return
+
+        host_qemu = shutil.which(qemu_bin_name)
+        if not host_qemu:
+            for candidate in [f"/usr/bin/{qemu_bin_name}", f"/usr/local/bin/{qemu_bin_name}"]:
+                if Path(candidate).exists():
+                    host_qemu = candidate
+                    break
+        
+        if not host_qemu:
+            logger.warning(f"[QEMU] {qemu_bin_name} not found on host. Cross-arch might fail.")
+            return
+
+        chroot_qemu_dir = self.target_root / "usr" / "bin"
+        chroot_qemu_dir.mkdir(parents=True, exist_ok=True)
+        chroot_qemu_path = chroot_qemu_dir / qemu_bin_name
+
+        if not chroot_qemu_path.exists():
+            try:
+                shutil.copy2(host_qemu, chroot_qemu_path)
+                chroot_qemu_path.chmod(0o755)
+            except Exception as e:
+                logger.warning(f"Failed to copy {qemu_bin_name} to chroot: {e}")
+
+    def mount_virtual_fs(self):
+        if self.mode == "mock":
+            self.is_mounted = True
+            return
+
+        if os.geteuid() != 0:
+            raise ChrootManagerError("Root required to mount filesystems.")
+
+        self._setup_qemu_static()
+
+        mounts = [
+            ("proc", self.target_root / "proc", "proc", None),
+            ("sysfs", self.target_root / "sys", "sysfs", None),
+            ("udev", self.target_root / "dev", "devtmpfs", None),
+            ("devpts", self.target_root / "dev" / "pts", "devpts", None),
+            ("tmpfs", self.target_root / "dev" / "shm", "tmpfs", None),
+        ]
+
+        for src, target, fstype, opts in mounts:
+            target.mkdir(parents=True, exist_ok=True)
+            cmd = ["mount", "-t", fstype]
+            if opts:
+                cmd.extend(["-o", opts])
+            cmd.extend([src, str(target)])
+            subprocess.run(cmd, capture_output=True)
+
+        if self.cache_dir:
+            dnf_cache_host = self.cache_dir / "dnf"
+            dnf_cache_host.mkdir(parents=True, exist_ok=True)
+            dnf_cache_target = self.target_root / "var" / "cache" / "dnf"
+            dnf_cache_target.mkdir(parents=True, exist_ok=True)
+            
+            subprocess.run(["mount", "--bind", str(dnf_cache_host), str(dnf_cache_target)], capture_output=True)
+
+        self.is_mounted = True
+
+    def umount_virtual_fs(self):
+        if self.mode == "mock":
+            self.is_mounted = False
+            return
+
+        if not self.is_mounted and os.geteuid() != 0:
+            return
+
+        targets = [
+            self.target_root / "var" / "cache" / "dnf",
+            self.target_root / "dev" / "shm",
+            self.target_root / "dev" / "pts",
+            self.target_root / "dev",
+            self.target_root / "sys",
+            self.target_root / "proc",
+        ]
+
+        for target in targets:
+            if target.exists():
+                subprocess.run(["umount", "-l", str(target)], capture_output=True)
+
+        self.is_mounted = False
+
+    def run_in_chroot(self, command, env: Optional[dict] = None, check: bool = True):
+        return CommandRunner.run_chroot_stream(
+            chroot_path=str(self.target_root),
+            command=command,
+            env=env,
+            mode=self.mode
+        )

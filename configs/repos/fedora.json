@@ -1,0 +1,10 @@
+{
+  "repo_id": "fedora",
+  "repo_name": "Fedora $releasever - $basearch",
+  "metalink": "https://mirrors.fedoraproject.org/metalink?repo=fedora-$releasever&arch=$basearch",
+  "enabled": true,
+  "gpgcheck": true,
+  "gpgkey": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-primary",
+  "metadata_expire": "6h",
+  "countme": true
+}

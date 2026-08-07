@@ -1,0 +1,12 @@
+{
+  "name": "guest",
+  "password": "",
+  "uid": 1001,
+  "gid": 1001,
+  "groups": ["audio", "video"],
+  "shell": "/bin/bash",
+  "home": "/home/guest",
+  "sudo": "none",
+  "autologin": false,
+  "lock_root": true
+}

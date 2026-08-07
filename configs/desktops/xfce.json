@@ -1,0 +1,26 @@
+{
+  "desktop": "xfce",
+  "display_name": "Xfce",
+  "packages": [
+    "lightdm",
+    "lightdm-gtk",
+    "xfce4-terminal",
+    "thunar",
+    "thunar-volman",
+    "thunar-archive-plugin",
+    "xfce4-settings",
+    "xfce4-panel",
+    "xfce4-session",
+    "xfdesktop",
+    "xfwm4",
+    "mousepad",
+    "ristretto"
+  ],
+  "groups": ["@xfce-desktop"],
+  "display_manager": "lightdm",
+  "display_manager_package": "lightdm",
+  "session": "xfce",
+  "session_type": "x11",
+  "services_enable": ["lightdm"],
+  "use_wayland": false
+}

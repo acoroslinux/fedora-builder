@@ -1,0 +1,11 @@
+{
+  "variant": "iot",
+  "description": "Internet of Things device image",
+  "packages": ["rpm-ostree", "ignition"],
+  "groups": ["@iot"],
+  "services_enable": ["systemd-networkd", "systemd-resolved", "sshd"],
+  "live_media": false,
+  "include_installer": false,
+  "squashfs_root": false,
+  "boot_params": "quiet console=ttyS0,115200n8"
+}

@@ -1,0 +1,15 @@
+{
+  "packages": [
+    "vlc",
+    "ffmpeg",
+    "gstreamer1-plugins-base",
+    "gstreamer1-plugins-good",
+    "gstreamer1-plugins-bad-free",
+    "gstreamer1-plugins-ugly-free",
+    "rhythmbox",
+    "totem"
+  ],
+  "repos": [
+    "rpmfusion-free"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "packages": [
+    "firewalld",
+    "nftables",
+    "selinux-policy-targeted",
+    "setools-console",
+    "audit",
+    "aide",
+    "policycoreutils",
+    "policycoreutils-python-utils"
+  ]
+}

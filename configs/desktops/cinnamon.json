@@ -1,0 +1,22 @@
+{
+  "desktop": "cinnamon",
+  "display_name": "Cinnamon",
+  "packages": [
+    "lightdm",
+    "lightdm-gtk",
+    "cinnamon",
+    "cinnamon-control-center",
+    "nemo",
+    "nemo-fileroller",
+    "gnome-terminal",
+    "xed",
+    "xviewer"
+  ],
+  "groups": ["@cinnamon-desktop"],
+  "display_manager": "lightdm",
+  "display_manager_package": "lightdm",
+  "session": "cinnamon",
+  "session_type": "x11",
+  "services_enable": ["lightdm"],
+  "use_wayland": false
+}

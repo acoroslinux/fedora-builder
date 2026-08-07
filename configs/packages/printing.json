@@ -1,0 +1,11 @@
+{
+  "packages": [
+    "cups",
+    "cups-filters",
+    "hplip",
+    "gutenprint",
+    "simple-scan",
+    "system-config-printer",
+    "cups-pdf"
+  ]
+}

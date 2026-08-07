@@ -1,0 +1,11 @@
+{
+  "variant": "minimal",
+  "description": "Minimal base system",
+  "packages": ["dracut-live"],
+  "groups": ["@core"],
+  "services_enable": [],
+  "live_media": true,
+  "include_installer": false,
+  "squashfs_root": true,
+  "boot_params": "rd.live.image quiet"
+}

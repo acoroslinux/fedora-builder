@@ -1,0 +1,24 @@
+{
+  "desktop": "mate",
+  "display_name": "MATE",
+  "packages": [
+    "lightdm",
+    "lightdm-gtk",
+    "mate-terminal",
+    "caja",
+    "mate-control-center",
+    "mate-panel",
+    "mate-session-manager",
+    "marco",
+    "pluma",
+    "eom",
+    "engrampa"
+  ],
+  "groups": ["@mate-desktop"],
+  "display_manager": "lightdm",
+  "display_manager_package": "lightdm",
+  "session": "mate",
+  "session_type": "x11",
+  "services_enable": ["lightdm"],
+  "use_wayland": false
+}

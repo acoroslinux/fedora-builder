@@ -1,0 +1,12 @@
+{
+  "enable": [
+    "systemd-timesyncd",
+    "systemd-resolved",
+    "dbus",
+    "dbus-broker",
+    "firewalld",
+    "auditd",
+    "avahi-daemon",
+    "crond"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "desktop": "hyprland",
+  "display_name": "Hyprland",
+  "packages": [
+    "hyprland",
+    "waybar",
+    "hyprpaper",
+    "hypridle",
+    "hyprlock",
+    "kitty",
+    "wofi",
+    "dunst",
+    "xdg-desktop-portal-hyprland",
+    "sddm",
+    "grim",
+    "slurp",
+    "wl-clipboard"
+  ],
+  "groups": [],
+  "display_manager": "sddm",
+  "display_manager_package": "sddm",
+  "session": "hyprland",
+  "session_type": "wayland",
+  "services_enable": ["sddm"],
+  "use_wayland": true
+}

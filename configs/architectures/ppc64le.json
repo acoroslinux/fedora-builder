@@ -1,0 +1,15 @@
+{
+  "arch": "ppc64le",
+  "basearch": "ppc64le",
+  "releasearch": "ppc64le",
+  "packages": ["grub2-ppc64le", "grub2-ppc64le-modules"],
+  "kernel_arch": "ppc64le",
+  "efi_arch": null,
+  "efi_bootfile": null,
+  "grub_target_bios": "powerpc-ieee1275",
+  "grub_target_efi": null,
+  "dnf_baseurl_arch": "ppc64le",
+  "supports_bios": true,
+  "supports_uefi": false,
+  "requires_qemu": true
+}

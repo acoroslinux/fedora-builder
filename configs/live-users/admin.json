@@ -1,0 +1,12 @@
+{
+  "name": "liveuser",
+  "password": "live",
+  "uid": 1000,
+  "gid": 1000,
+  "groups": ["wheel", "audio", "video", "network", "disk", "storage", "optical", "input", "power", "render"],
+  "shell": "/bin/bash",
+  "home": "/home/liveuser",
+  "sudo": "nopasswd",
+  "autologin": true,
+  "lock_root": true
+}

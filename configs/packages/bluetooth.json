@@ -1,0 +1,9 @@
+{
+  "packages": [
+    "bluez",
+    "bluez-tools",
+    "blueman",
+    "bluez-cups",
+    "bluez-obexd"
+  ]
+}

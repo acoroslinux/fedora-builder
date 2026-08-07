@@ -1,0 +1,25 @@
+{
+  "desktop": "gnome",
+  "display_name": "GNOME",
+  "packages": [
+    "@gnome-desktop",
+    "gnome-shell-extension-dash-to-dock",
+    "gnome-tweaks",
+    "gnome-extensions-app",
+    "chrome-gnome-shell",
+    "adwaita-gtk2-theme",
+    "gnome-terminal",
+    "nautilus",
+    "gedit",
+    "evince",
+    "eog",
+    "file-roller"
+  ],
+  "groups": ["@gnome-desktop"],
+  "display_manager": "gdm",
+  "display_manager_package": "gdm",
+  "session": "gnome",
+  "session_type": "wayland",
+  "services_enable": ["gdm"],
+  "use_wayland": true
+}

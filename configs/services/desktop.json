@@ -1,0 +1,11 @@
+{
+  "enable": [
+    "bluetooth",
+    "cups",
+    "rtkit-daemon",
+    "udisks2",
+    "colord",
+    "acpid",
+    "thermald"
+  ]
+}

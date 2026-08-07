@@ -1,0 +1,12 @@
+{
+  "packages": [
+    "steam",
+    "lutris",
+    "wine",
+    "gamemode",
+    "mangohud"
+  ],
+  "repos": [
+    "rpmfusion-nonfree"
+  ]
+}

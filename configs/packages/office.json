@@ -1,0 +1,12 @@
+{
+  "packages": [
+    "libreoffice-writer",
+    "libreoffice-calc",
+    "libreoffice-impress",
+    "libreoffice-gtk3",
+    "thunderbird",
+    "gedit",
+    "hunspell",
+    "hunspell-en"
+  ]
+}

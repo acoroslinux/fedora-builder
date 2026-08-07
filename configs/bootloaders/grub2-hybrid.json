@@ -1,0 +1,9 @@
+{
+  "bootloader": "grub2-hybrid",
+  "packages": ["grub2-common", "grub2-pc", "grub2-efi-x64", "grub2-efi-x64-modules", "grub2-tools", "shim-x64", "syslinux"],
+  "bios_enabled": true,
+  "uefi_enabled": true,
+  "secure_boot": true,
+  "timeout": 10,
+  "default_entry": "live"
+}

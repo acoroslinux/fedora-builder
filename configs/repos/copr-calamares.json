@@ -1,0 +1,10 @@
+{
+  "repo_id": "copr:copr.fedorainfracloud.org:arivenitez:calamares",
+  "repo_name": "Copr repo for calamares owned by arivenitez",
+  "baseurl": "https://download.copr.fedorainfracloud.org/results/arivenitez/calamares/fedora-$releasever-$basearch/",
+  "enabled": true,
+  "gpgcheck": true,
+  "gpgkey": "https://download.copr.fedorainfracloud.org/results/arivenitez/calamares/pubkey.gpg",
+  "copr_user": "arivenitez",
+  "copr_project": "calamares"
+}

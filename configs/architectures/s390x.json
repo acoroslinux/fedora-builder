@@ -1,0 +1,15 @@
+{
+  "arch": "s390x",
+  "basearch": "s390x",
+  "releasearch": "s390x",
+  "packages": ["s390utils-base"],
+  "kernel_arch": "s390x",
+  "efi_arch": null,
+  "efi_bootfile": null,
+  "grub_target_bios": null,
+  "grub_target_efi": null,
+  "dnf_baseurl_arch": "s390x",
+  "supports_bios": false,
+  "supports_uefi": false,
+  "requires_qemu": true
+}

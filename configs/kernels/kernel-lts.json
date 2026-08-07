@@ -1,0 +1,6 @@
+{
+  "kernel": "kernel-lts",
+  "packages": ["kernel-longterm", "kernel-longterm-core", "kernel-longterm-modules", "kernel-longterm-modules-extra", "kernel-longterm-devel"],
+  "kernel_image": "vmlinuz",
+  "initramfs": "initrd.img"
+}

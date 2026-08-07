@@ -1,0 +1,11 @@
+{
+  "variant": "cloud",
+  "description": "Cloud base image",
+  "packages": ["cloud-init", "cloud-utils-growpart"],
+  "groups": ["@core"],
+  "services_enable": ["cloud-init.target", "sshd", "systemd-networkd", "systemd-resolved"],
+  "live_media": false,
+  "include_installer": false,
+  "squashfs_root": false,
+  "boot_params": "quiet console=ttyS0,115200n8"
+}

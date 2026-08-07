@@ -1,0 +1,13 @@
+{
+  "packages": [
+    "pipewire",
+    "pipewire-alsa",
+    "pipewire-jack-audio-connection-kit",
+    "pipewire-pulseaudio",
+    "wireplumber",
+    "alsa-utils",
+    "pavucontrol",
+    "alsa-plugins-pulseaudio",
+    "pamixer"
+  ]
+}
