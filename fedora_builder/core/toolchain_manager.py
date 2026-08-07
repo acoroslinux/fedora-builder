@@ -326,15 +326,23 @@ class ToolchainManager:
             if res.returncode != 0 and "already mounted" not in res.stderr:
                 logger.warning(f"Could not mount {target}: {res.stderr.strip()}")
 
-        # Bind-mount workdir into build_host so tools can access the ISO staging area
-        workdir_mount = self.build_host_dir / "workdir"
-        workdir_mount.mkdir(parents=True, exist_ok=True)
-        res = subprocess.run(
-            ["mount", "--bind", str(self.workdir_base), str(workdir_mount)],
-            capture_output=True, text=True,
-        )
-        if res.returncode != 0 and "already mounted" not in res.stderr:
-            logger.warning(f"Could not bind-mount workdir into build_host: {res.stderr.strip()}")
+        # Bind-mount specific subdirectories (chroot, iso_root, output, cache) into build_host
+        # to avoid circular mount loops (since build_host is located inside workdir_base).
+        workdir_mount_base = self.build_host_dir / "workdir"
+        workdir_mount_base.mkdir(parents=True, exist_ok=True)
+
+        for sub in ["chroot", "iso_root", "output", "cache"]:
+            host_sub = self.workdir_base / sub
+            host_sub.mkdir(parents=True, exist_ok=True)
+            chroot_sub = workdir_mount_base / sub
+            chroot_sub.mkdir(parents=True, exist_ok=True)
+
+            res = subprocess.run(
+                ["mount", "--bind", str(host_sub), str(chroot_sub)],
+                capture_output=True, text=True,
+            )
+            if res.returncode != 0 and "already mounted" not in res.stderr:
+                logger.warning(f"Could not bind-mount {host_sub} into build_host: {res.stderr.strip()}")
 
         self.is_mounted = True
 
@@ -348,6 +356,10 @@ class ToolchainManager:
         logger.info(f"Unmounting virtual filesystems from build_host: {self.build_host_dir}")
 
         targets = [
+            self.build_host_dir / "workdir" / "cache",
+            self.build_host_dir / "workdir" / "output",
+            self.build_host_dir / "workdir" / "iso_root",
+            self.build_host_dir / "workdir" / "chroot",
             self.build_host_dir / "workdir",
             self.build_host_dir / "dev" / "shm",
             self.build_host_dir / "dev" / "pts",
