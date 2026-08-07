@@ -83,7 +83,13 @@ class BuildOrchestrator:
         if self.clean:
             self._safe_clean_build_tree()
             
-        toolchain = ToolchainManager(self.workdir, self.mode, self.force_isolated_toolchain)
+        toolchain = ToolchainManager(
+            workdir_base=self.workdir,
+            mode=self.mode,
+            force_isolated=self.force_isolated_toolchain,
+            target_arch=self.arch,
+            releasever=self.config["releasever"],
+        )
         toolchain.setup()
         
         chroot = ChrootManager(self.target_root, self.mode, arch=self.arch)

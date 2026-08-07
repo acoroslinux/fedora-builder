@@ -63,13 +63,18 @@ class ISOEngine:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.touch()
             return
-            
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if output_path.exists():
             output_path.unlink()
-            
-        cmd = ["mksquashfs", str(source_dir), str(output_path), "-comp", "zstd", "-b", "1M"]
-        subprocess.run(cmd, check=True)
+
+        compression = self.config.get("compression", "zstd")
+        # mksquashfs runs inside build_host via toolchain.run_tool()
+        # Paths are relative to workdir (bind-mounted as /workdir inside build_host)
+        self.toolchain.run_tool(
+            "mksquashfs",
+            [str(source_dir), str(output_path), "-comp", compression, "-b", "1M", "-noappend"],
+        )
 
     def _create_discinfo(self, iso_staging: Path):
         with open(iso_staging / ".discinfo", "w") as f:
@@ -82,7 +87,20 @@ class ISOEngine:
     def _generate_checksums(self, iso_file: Path):
         if self.mode == "mock":
             return
-        subprocess.run(["sha256sum", str(iso_file)], check=True)
+        import hashlib
+        # Generate SHA256 and MD5 checksums using Python (no host tools needed)
+        sha256 = hashlib.sha256()
+        md5    = hashlib.md5()
+        with open(iso_file, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                sha256.update(chunk)
+                md5.update(chunk)
+        sha256_path = iso_file.with_suffix(".sha256")
+        md5_path    = iso_file.with_suffix(".md5")
+        sha256_path.write_text(f"{sha256.hexdigest()}  {iso_file.name}\n")
+        md5_path.write_text(f"{md5.hexdigest()}  {iso_file.name}\n")
+        logger.info(f"SHA256: {sha256.hexdigest()}")
+        logger.info(f"MD5:    {md5.hexdigest()}")
 
     def _clean_rootfs(self, rootfs: Path):
         if self.mode == "mock":
@@ -132,8 +150,29 @@ class ISOEngine:
         if self.mode == "mock":
             iso_path.touch()
         else:
-            cmd = ["xorriso", "-as", "mkisofs", "-V", iso_label, "-o", str(iso_path), str(self.iso_staging)]
-            subprocess.run(cmd, check=True)
+            # xorriso runs inside build_host via toolchain.run_tool() — full isolation
+            self.toolchain.run_tool(
+                "xorriso",
+                [
+                    "-as", "mkisofs",
+                    "-V", iso_label,
+                    "-rock",
+                    "-joliet",
+                    # BIOS El Torito boot
+                    "-eltorito-boot", "isolinux/isolinux.bin",
+                    "-eltorito-catalog", "isolinux/boot.cat",
+                    "-no-emul-boot",
+                    "-boot-load-size", "4",
+                    "-boot-info-table",
+                    # UEFI boot
+                    "-eltorito-alt-boot",
+                    "-e", "images/efiboot.img",
+                    "-no-emul-boot",
+                    # Output
+                    "-o", str(iso_path),
+                    str(self.iso_staging),
+                ]
+            )
             self._generate_checksums(iso_path)
             
         return iso_path
