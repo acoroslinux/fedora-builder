@@ -654,7 +654,17 @@ class ToolchainManager:
             shutil.copy2(host_resolv, target_resolv)
             logger.debug("Copied /etc/resolv.conf into build_host.")
 
-    def _fetch_json(self, url: str, accept: str = "application/json") -> Dict[str, Any]:
+    def _fetch_json(
+        self,
+        url: str,
+        accept: str = (
+            "application/vnd.oci.image.manifest.v1+json, "
+            "application/vnd.docker.distribution.manifest.v2+json, "
+            "application/vnd.oci.image.index.v1+json, "
+            "application/vnd.docker.distribution.manifest.list.v2+json, "
+            "application/json"
+        ),
+    ) -> Dict[str, Any]:
         """Fetch a JSON document from a URL, returning a parsed dict."""
         req = urllib.request.Request(
             url,
