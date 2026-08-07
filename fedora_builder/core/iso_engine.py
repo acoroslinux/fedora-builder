@@ -217,9 +217,17 @@ class ISOEngine:
         self._create_discinfo(self.iso_staging)
         self._create_treeinfo(self.iso_staging)
         
-        iso_path = Path(f"output/{self.output_name}.iso")
+        from fedora_builder.core.path_utils import resolve_from_project
+        iso_path = resolve_from_project(f"output/{self.output_name}.iso")
         iso_path.parent.mkdir(parents=True, exist_ok=True)
         
+        # Ensure build_host also sees the output directory
+        if hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:
+            project_root = self.workdir.parent.parent
+            output_in_build_host = self.toolchain.build_host_dir / project_root.relative_to("/") / "output"
+            output_in_build_host.mkdir(parents=True, exist_ok=True)
+            (self.toolchain.build_host_dir / "workdir" / "output").mkdir(parents=True, exist_ok=True)
+
         if self.mode == "mock":
             iso_path.touch()
         else:
