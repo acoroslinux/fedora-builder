@@ -17,6 +17,31 @@ class DNFManager:
         self.target_root = chroot.target_root
         self.toolchain = toolchain
 
+    def resolve_cache_dir(self) -> Path:
+        """
+        Determine resilient package cache directory with write testing and fallback to /tmp.
+        Identical to void-builder's cache resolution strategy.
+        """
+        arch = getattr(self.chroot, "arch", "x86_64")
+        cache_path_str = self.config.get("system", {}).get("dnf_cache", "workdir/cache/dnf")
+        candidate = Path(cache_path_str)
+        if not candidate.is_absolute():
+            from fedora_builder.core.path_utils import resolve_from_project
+            candidate = resolve_from_project(candidate) / arch
+
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write_test"
+            probe.write_text("ok")
+            probe.unlink(missing_ok=True)
+            return candidate
+        except Exception:
+            import tempfile
+            fallback = Path(tempfile.gettempdir()) / "fedora-builder-cache" / "dnf" / arch
+            fallback.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Using fallback cache directory: {fallback}")
+            return fallback
+
     def _run_dnf(self, args: List[str]) -> subprocess.CompletedProcess:
         """Run DNF using the isolated build_host toolchain if available, otherwise host fallback."""
         if self.toolchain:
