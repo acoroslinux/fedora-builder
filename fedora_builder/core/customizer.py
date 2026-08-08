@@ -108,7 +108,7 @@ class SystemCustomizer:
             "[Flatpak Remote]\n"
             "Title=Flathub\n"
             "Url=https://dl.flathub.org/repo/\n"
-            "GPGKey=mQENBFk71/ABCADb7...\n"
+            "GPGKeyURL=https://dl.flathub.org/repo/flathub.gpg\n"
             "Homepage=https://flathub.org/\n"
             "Comment=Central repository of Flatpak applications\n"
         )
