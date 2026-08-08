@@ -136,6 +136,51 @@ class SystemCustomizer:
         with open(rule_file, "w") as f:
             f.write(rule_content)
 
+    def configure_calamares(self):
+        """Configure Calamares desktop launcher and autostart script if with_calamares is enabled."""
+        if self.chroot.mode == "mock":
+            return
+        if not self.config.get("with_calamares", False):
+            return
+        
+        script_path = self.target_root / "usr" / "local" / "bin" / "create-install-icon.sh"
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_content = (
+            "#!/bin/bash\n"
+            "for user_home in /home/*; do\n"
+            "    if [ -d \"$user_home\" ]; then\n"
+            "        desktop_dir=\"$user_home/Desktop\"\n"
+            "        mkdir -p \"$desktop_dir\"\n"
+            "        cat << 'EOF' > \"$desktop_dir/install-fedora.desktop\"\n"
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Install Fedora Modern\n"
+            "Comment=Install Fedora Linux to disk\n"
+            "Exec=sudo calamares\n"
+            "Icon=system-software-install\n"
+            "Terminal=false\n"
+            "Categories=System;\n"
+            "EOF\n"
+            "        chmod +x \"$desktop_dir/install-fedora.desktop\"\n"
+            "        chown -R $(basename \"$user_home\"): \"$desktop_dir\"\n"
+            "    fi\n"
+            "done\n"
+        )
+        script_path.write_text(script_content)
+        script_path.chmod(0o755)
+
+        autostart_dir = self.target_root / "etc" / "xdg" / "autostart"
+        autostart_dir.mkdir(parents=True, exist_ok=True)
+        (autostart_dir / "create-install-icon.desktop").write_text(
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Create Install Icon\n"
+            "Exec=/usr/local/bin/create-install-icon.sh\n"
+            "Hidden=false\n"
+            "NoDisplay=false\n"
+            "X-GNOME-Autostart-enabled=true\n"
+        )
+
     def copy_custom_files(self):
         if self.chroot.mode == "mock":
             return
@@ -150,4 +195,5 @@ class SystemCustomizer:
         self.configure_zram()
         self.configure_flathub()
         self.configure_polkit_power()
+        self.configure_calamares()
         self.copy_custom_files()

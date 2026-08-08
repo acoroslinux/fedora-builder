@@ -228,11 +228,11 @@ class BuildOrchestrator:
                 artifact = iso_engine.build_tarball()
             elif self.output_format == "container":
                 artifact = iso_engine.build_container()
-            else:
-                artifact = iso_engine.build_iso()
-                
+            if self.generate_manifest and artifact and artifact.exists():
+                self._generate_checksums(artifact)
+
             return artifact
-            
+
         finally:
             logger.info("Performing mandatory cleanup and unmounting all filesystems...")
             try:
@@ -243,3 +243,22 @@ class BuildOrchestrator:
                 toolchain.umount_virtual_fs()
             except Exception as e:
                 logger.warning(f"Error unmounting build_host toolchain: {e}")
+
+    def _generate_checksums(self, artifact_path: Path):
+        """Generate SHA256 and MD5 checksum files next to the built artifact."""
+        if not artifact_path or not artifact_path.exists():
+            return
+        import hashlib
+        logger.info(f"Generating checksums for artifact: {artifact_path.name}")
+        sha256 = hashlib.sha256()
+        md5 = hashlib.md5()
+        with open(artifact_path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                sha256.update(chunk)
+                md5.update(chunk)
+
+        sha256_path = artifact_path.with_name(f"{artifact_path.name}.sha256")
+        md5_path = artifact_path.with_name(f"{artifact_path.name}.md5")
+
+        sha256_path.write_text(f"{sha256.hexdigest()}  {artifact_path.name}\n")
+        md5_path.write_text(f"{md5.hexdigest()}  {artifact_path.name}\n")

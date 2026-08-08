@@ -25,6 +25,9 @@ elif command -v zypper >/dev/null 2>&1; then
 elif command -v xbps-install >/dev/null 2>&1; then
     echo "Installing via xbps..."
     xbps-install -Sy qemu-user-static binfmt-support xorriso squashfs-tools syslinux
+elif command -v emerge >/dev/null 2>&1; then
+    echo "Installing via emerge (Gentoo)..."
+    emerge -uN app-emulation/qemu sys-fs/squashfs-tools dev-libs/libisoburn sys-boot/syslinux sys-boot/grub
 else
     echo "Unsupported package manager. Please install qemu-user-static, binfmt-support, xorriso, squashfs-tools, and syslinux manually."
     exit 1
