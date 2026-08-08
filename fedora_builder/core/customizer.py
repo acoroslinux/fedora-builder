@@ -84,10 +84,61 @@ class SystemCustomizer:
         dnf_mgr = DNFManager(self.chroot, self.config)
         dnf_mgr.configure_selinux(self.config.get("selinux_mode", "permissive"))
 
+    def configure_zram(self):
+        """Configure systemd-zram-generator for RAM compressed swap (Fedora default)."""
+        if self.chroot.mode == "mock":
+            return
+        if not self.config.get("with_zram", True):
+            return
+        zram_conf = self.target_root / "etc" / "systemd" / "zram-generator.conf"
+        zram_conf.parent.mkdir(parents=True, exist_ok=True)
+        with open(zram_conf, "w") as f:
+            f.write("[zram0]\nzram-size = ram / 2\ncompression-algorithm = zstd\n")
+
+    def configure_flathub(self):
+        """Configure Flathub Flatpak repository on system first-boot."""
+        if self.chroot.mode == "mock":
+            return
+        if not self.config.get("with_flathub", False):
+            return
+        flatpak_dir = self.target_root / "etc" / "flatpak" / "remotes.d"
+        flatpak_dir.mkdir(parents=True, exist_ok=True)
+        flathub_repo = flatpak_dir / "flathub.flatpakrepo"
+        repo_content = (
+            "[Flatpak Remote]\n"
+            "Title=Flathub\n"
+            "Url=https://dl.flathub.org/repo/\n"
+            "GPGKey=mQENBFk71/ABCADb7...\n"
+            "Homepage=https://flathub.org/\n"
+            "Comment=Central repository of Flatpak applications\n"
+        )
+        with open(flathub_repo, "w") as f:
+            f.write(repo_content)
+
+    def configure_polkit_power(self):
+        """Configure passwordless administrative and power management Polkit rules."""
+        if self.chroot.mode == "mock":
+            return
+        polkit_dir = self.target_root / "etc" / "polkit-1" / "rules.d"
+        polkit_dir.mkdir(parents=True, exist_ok=True)
+        rule_file = polkit_dir / "10-enable-power-actions.rules"
+        rule_content = (
+            "/* Allow all users to perform power off, reboot, suspend, and session logout */\n"
+            "polkit.addRule(function(action, subject) {\n"
+            "    if (action.id.indexOf('org.freedesktop.login1.') === 0 ||\n"
+            "        action.id.indexOf('org.freedesktop.upower.') === 0 ||\n"
+            "        action.id.indexOf('org.gnome.SessionManager.') === 0 ||\n"
+            "        action.id.indexOf('org.freedesktop.consolekit.') === 0) {\n"
+            "        return polkit.Result.YES;\n"
+            "    }\n"
+            "});\n"
+        )
+        with open(rule_file, "w") as f:
+            f.write(rule_content)
+
     def copy_custom_files(self):
         if self.chroot.mode == "mock":
             return
-        # Usually copies from configs/custom_files to target_root
 
     def configure_live_environment(self):
         self.setup_live_users()
@@ -96,4 +147,7 @@ class SystemCustomizer:
         self.configure_autologin()
         self.configure_plymouth()
         self.configure_selinux()
+        self.configure_zram()
+        self.configure_flathub()
+        self.configure_polkit_power()
         self.copy_custom_files()

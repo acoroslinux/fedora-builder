@@ -175,6 +175,24 @@ def main():
         help="Include the Calamares graphical installer in the ISO.",
     )
 
+    parser.add_argument(
+        "--multimedia-codecs",
+        action="store_true",
+        help="Automatically enable RPM Fusion repos and install complete H.264/AAC/FFmpeg multimedia codecs.",
+    )
+
+    parser.add_argument(
+        "--with-flathub",
+        action="store_true",
+        help="Configure Flathub Flatpak repository on first boot.",
+    )
+
+    parser.add_argument(
+        "--with-zram",
+        action="store_true",
+        help="Configure systemd-zram-generator for RAM compressed swap.",
+    )
+
     # ── Customization Overrides ─────────────────────────────────────────────────
     parser.add_argument(
         "-d",
@@ -383,6 +401,9 @@ def main():
         with_calamares=args.with_calamares,
         force_isolated_toolchain=args.force_isolated_toolchain,
         copr_repos=parsed_copr_repos,
+        multimedia_codecs=args.multimedia_codecs,
+        with_flathub=args.with_flathub,
+        with_zram=args.with_zram,
     )
 
     # ── --validate mode ─────────────────────────────────────────────────────────

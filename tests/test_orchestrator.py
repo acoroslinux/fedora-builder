@@ -234,6 +234,20 @@ class TestBuildWithExtras:
         result = orch.build()
         assert isinstance(result, Path)
 
+    def test_mock_build_multimedia_codecs(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, multimedia_codecs=True)
+        assert "multimedia" in orch.package_profiles
+        assert "rpmfusion-free" in orch.repo_profiles
+        result = orch.build()
+        assert isinstance(result, Path)
+
+    def test_mock_build_flathub_and_zram(self, tmp_path):
+        orch = make_orchestrator(tmp_path=tmp_path, with_flathub=True, with_zram=True)
+        assert orch.config.get("with_flathub") is True
+        assert orch.config.get("with_zram") is True
+        result = orch.build()
+        assert isinstance(result, Path)
+
 
 # ── test_all_desktops ─────────────────────────────────────────────────────────────
 

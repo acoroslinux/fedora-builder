@@ -43,6 +43,9 @@ class BuildOrchestrator:
         force_isolated_toolchain: bool = False,
         copr_repos: Optional[List[str]] = None,
         extra_repos: Optional[List[str]] = None,
+        multimedia_codecs: bool = False,
+        with_flathub: bool = False,
+        with_zram: bool = False,
     ):
         self.arch = arch
         self.config_path = config_path
@@ -67,11 +70,27 @@ class BuildOrchestrator:
         self.force_isolated_toolchain = force_isolated_toolchain
         self.copr_repos = copr_repos or []
         self.extra_repos = extra_repos or []
-        
+        self.multimedia_codecs = multimedia_codecs
+        self.with_flathub = with_flathub
+        self.with_zram = with_zram
+
+        if self.multimedia_codecs:
+            if "rpmfusion-free" not in self.repo_profiles:
+                self.repo_profiles.append("rpmfusion-free")
+            if "rpmfusion-nonfree" not in self.repo_profiles:
+                self.repo_profiles.append("rpmfusion-nonfree")
+            if "multimedia" not in self.package_profiles:
+                self.package_profiles.append("multimedia")
+
         # Use resolve_from_project to get absolute path regardless of CWD
         self.workdir = resolve_from_project(f"workdir/{self.arch}")
         self.target_root = self.workdir / "chroot"
-        self.config = {"releasever": self.release.split("-")[-1] if self.release else "41", "basearch": self.arch}
+        self.config = {
+            "releasever": self.release.split("-")[-1] if self.release else "41",
+            "basearch": self.arch,
+            "with_flathub": self.with_flathub,
+            "with_zram": self.with_zram,
+        }
 
     def _safe_clean_build_tree(self):
         # Preventively unmount any stale mountpoints before cleaning

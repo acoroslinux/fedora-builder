@@ -43,11 +43,17 @@ class DNFManager:
             return fallback
 
     def _run_dnf(self, args: List[str]) -> subprocess.CompletedProcess:
-        """Run DNF using the isolated build_host toolchain if available, otherwise host fallback."""
+        """Run DNF (or DNF5 for F41+) using the isolated build_host toolchain if available, otherwise host fallback."""
+        import shutil
+        dnf_cmd = "dnf"
+        releasever = str(self.config.get("releasever", "41"))
+        if releasever in ["41", "42", "rawhide"] and shutil.which("dnf5"):
+            dnf_cmd = "dnf5"
+
         if self.toolchain:
-            return self.toolchain.run_tool("dnf", args)
+            return self.toolchain.run_tool(dnf_cmd, args)
         else:
-            return subprocess.run(["dnf"] + args)
+            return subprocess.run([dnf_cmd] + args)
 
     def configure_dnf_conf(self):
         dnf_conf_dir = self.target_root / "etc" / "dnf"
