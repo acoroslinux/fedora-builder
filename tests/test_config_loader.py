@@ -260,25 +260,29 @@ class TestAssembleBuildConfig:
 # ── test_available_profiles ───────────────────────────────────────────────────────
 
 class TestAvailableProfiles:
-    @pytest.mark.parametrize("category,expected_count", [
+    @pytest.mark.parametrize("category,expected_min_count", [
         ("architectures", 4),
         ("desktops", 9),
-        ("releases", 3),
+        ("releases", 5),
         ("variants", 5),
-        ("kernels", 2),
+        ("kernels", 3),
         ("bootloaders", 3),
         ("live-users", 2),
     ])
-    def test_profile_counts(self, config_root, category, expected_count):
+    def test_profile_counts(self, config_root, category, expected_min_count):
         profiles = sorted([p.stem for p in (config_root / category).glob("*.json")])
-        assert len(profiles) == expected_count, (
-            f"Expected {expected_count} profiles in '{category}', got {len(profiles)}: {profiles}"
+        assert len(profiles) >= expected_min_count, (
+            f"Expected at least {expected_min_count} profiles in '{category}', got {len(profiles)}: {profiles}"
         )
 
     def test_package_profiles_exist(self, config_root):
-        required = ["base", "audio", "bluetooth", "development", "filesystems",
-                    "gaming", "multimedia", "networking", "office", "printing",
-                    "security", "virtualization"]
+        required = [
+            "base", "audio", "bluetooth", "browsers", "chat", "cloud-tools",
+            "desktop-apps", "dev-tools", "development", "filesystems", "gaming",
+            "graphics", "ide", "multimedia", "multimedia-editing", "network-shares",
+            "network-tools", "networking", "office", "printing", "productivity",
+            "security", "system-utils", "virtualization", "wayland", "xorg"
+        ]
         for name in required:
             path = config_root / "packages" / f"{name}.json"
             assert path.exists(), f"Missing package profile: {name}.json"

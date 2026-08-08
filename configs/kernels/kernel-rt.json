@@ -1,0 +1,6 @@
+{
+  "kernel": "kernel-rt",
+  "packages": ["kernel-rt", "kernel-rt-core", "kernel-rt-modules", "kernel-rt-modules-extra", "kernel-rt-devel"],
+  "kernel_image": "vmlinuz",
+  "initramfs": "initrd.img"
+}

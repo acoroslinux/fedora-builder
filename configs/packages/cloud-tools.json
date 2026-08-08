@@ -1,0 +1,11 @@
+{
+  "packages": [
+    "podman",
+    "docker",
+    "docker-compose",
+    "kubectl",
+    "helm",
+    "terraform",
+    "awscli2"
+  ]
+}

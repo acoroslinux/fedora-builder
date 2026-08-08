@@ -1,0 +1,7 @@
+{
+  "packages": [
+    "firefox",
+    "chromium",
+    "thunderbird"
+  ]
+}

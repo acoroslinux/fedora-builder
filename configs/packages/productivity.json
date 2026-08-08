@@ -1,0 +1,7 @@
+{
+  "packages": [
+    "libreoffice",
+    "libreoffice-gtk3",
+    "xournalpp"
+  ]
+}

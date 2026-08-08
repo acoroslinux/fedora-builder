@@ -1,0 +1,12 @@
+{
+  "packages": [
+    "gparted",
+    "kcalc",
+    "spectacle",
+    "file-roller",
+    "evince",
+    "eog",
+    "gnome-calculator",
+    "gnome-text-editor"
+  ]
+}

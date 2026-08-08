@@ -1,0 +1,19 @@
+{
+  "packages": [
+    "htop",
+    "btop",
+    "fastfetch",
+    "tmux",
+    "zsh",
+    "fzf",
+    "ripgrep",
+    "bat",
+    "fd-find",
+    "unzip",
+    "p7zip",
+    "p7zip-plugins",
+    "rsync",
+    "tree",
+    "lsof"
+  ]
+}

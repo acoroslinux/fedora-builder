@@ -1,0 +1,17 @@
+{
+  "release": "fedora-39",
+  "releasever": "39",
+  "release_name": "Fedora Linux 39",
+  "codename": "F39",
+  "is_prerelease": false,
+  "eol_date": "2024-11-12",
+  "base_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/39/Everything/{basearch}/os/",
+  "updates_url": "https://download.fedoraproject.org/pub/fedora/linux/updates/39/Everything/{basearch}/",
+  "metalink": "https://mirrors.fedoraproject.org/metalink?repo=fedora-39&arch={basearch}",
+  "updates_metalink": "https://mirrors.fedoraproject.org/metalink?repo=updates-released-f39&arch={basearch}",
+  "gpg_key": "file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-39-primary",
+  "gpg_key_url": "https://getfedora.org/static/fedora.gpg",
+  "default_repos": ["fedora", "updates"],
+  "live_os_id": "fedora",
+  "live_os_version": "39"
+}
