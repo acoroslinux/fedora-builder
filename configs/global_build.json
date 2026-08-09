@@ -19,14 +19,15 @@
   },
   "system": {
     "workdir_base": "workdir",
-    "iso_label": "FEDORA-LIVE",
+    "dnf_cache": "cache/dnf",
+    "iso_label": "fedora-modern",
     "iso_publisher": "AcorOS Linux",
     "iso_preparer": "fedora-builder",
     "selinux_mode": "permissive",
     "locale": "en_US.UTF-8",
     "timezone": "UTC",
     "keymap": "us",
-    "hostname": "fedora-live"
+    "hostname": "fedora-modern"
   },
   "boot": {
     "kernel_params": "rd.live.image quiet rhgb",

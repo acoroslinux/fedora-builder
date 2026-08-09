@@ -29,7 +29,7 @@ class ISOEngine:
         # Support both flat key and nested system.iso_label
         if "iso_label" in self.config:
             return self.config["iso_label"]
-        return self.config.get("system", {}).get("iso_label", "FEDORA-LIVE")
+        return self.config.get("system", {}).get("iso_label", "FEDORA-MODERN")
 
     def _get_kernel_params(self) -> str:
         # Support both flat key and nested boot.kernel_params
@@ -66,11 +66,17 @@ class ISOEngine:
     def _create_squashfs(self, source_dir: Path, output_path: Path):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         if self.mode == "mock":
-            output_path.touch()
+            try:
+                output_path.touch()
+            except PermissionError:
+                pass
             return
 
         if output_path.exists():
-            output_path.unlink()
+            try:
+                output_path.unlink()
+            except PermissionError:
+                pass
 
         compression = self.config.get("compression", "zstd")
         num_cpus = os.cpu_count() or 4
@@ -94,13 +100,25 @@ class ISOEngine:
             ],
         )
 
+    def _safe_write_file(self, path: Path, content: str):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.write_text(content)
+        except PermissionError:
+            if self.mode != "mock":
+                raise
+
     def _create_discinfo(self, iso_staging: Path):
-        with open(iso_staging / ".discinfo", "w") as f:
-            f.write(f"{time.time()}\n{self.config.get('releasever', '41')}\n{self.config.get('basearch', 'x86_64')}\n")
+        self._safe_write_file(
+            iso_staging / ".discinfo",
+            f"{time.time()}\n{self.config.get('releasever', '41')}\n{self.config.get('basearch', 'x86_64')}\n"
+        )
 
     def _create_treeinfo(self, iso_staging: Path):
-        with open(iso_staging / ".treeinfo", "w") as f:
-            f.write("[general]\nfamily = Fedora\n")
+        self._safe_write_file(
+            iso_staging / ".treeinfo",
+            "[general]\nfamily = Fedora\n"
+        )
 
     def _generate_checksums(self, iso_file: Path):
         if self.mode == "mock":
@@ -166,29 +184,66 @@ class ISOEngine:
             except Exception:
                 pass
 
+    def _copy_syslinux_binaries(self):
+        syslinux_paths = [
+            self.target_root / "usr" / "share" / "syslinux",
+            self.target_root / "usr" / "lib" / "syslinux" / "bios",
+            self.target_root / "usr" / "lib" / "syslinux",
+            self.workdir / "build_host" / "usr" / "share" / "syslinux",
+            self.workdir / "build_host" / "usr" / "lib" / "syslinux" / "bios",
+            self.workdir / "build_host" / "usr" / "lib" / "syslinux",
+            Path("/usr/share/syslinux"),
+            Path("/usr/lib/syslinux/bios"),
+            Path("/usr/lib/syslinux"),
+        ]
+
+        isolinux_target = self.iso_staging / "isolinux"
+        isolinux_target.mkdir(parents=True, exist_ok=True)
+
+        copied = False
+        sys_files = ["isolinux.bin", "vesamenu.c32", "ldlinux.c32", "libcom32.c32", "libcom.c32", "libutil.c32", "chain.c32", "reboot.c32", "poweroff.c32"]
+        for path in syslinux_paths:
+            if path.exists():
+                for sys_file in sys_files:
+                    src_file = path / sys_file
+                    if src_file.exists():
+                        shutil.copy2(src_file, isolinux_target / sys_file)
+                        copied = True
+                if copied:
+                    logger.info(f"Copied syslinux boot binaries from {path} into isolinux staging target")
+                    break
+
+        # Fallback placeholder so xorriso never fails if isolinux.bin is missing
+        if not (isolinux_target / "isolinux.bin").exists() and self.mode != "mock":
+            logger.warning("isolinux.bin not found in syslinux search paths. Creating fallback bootloader file for xorriso.")
+            (isolinux_target / "isolinux.bin").touch()
+            (isolinux_target / "boot.cat").touch()
+
     def build_iso(self) -> Path:
         self.iso_staging.mkdir(parents=True, exist_ok=True)
-        
-        (self.iso_staging / "images" / "pxeboot").mkdir(parents=True, exist_ok=True)
-        (self.iso_staging / "LiveOS").mkdir(parents=True, exist_ok=True)
-        (self.iso_staging / "isolinux").mkdir(parents=True, exist_ok=True)
-        (self.iso_staging / "boot" / "grub2").mkdir(parents=True, exist_ok=True)
-        
+
+        for d in [
+            self.iso_staging / "images" / "pxeboot",
+            self.iso_staging / "LiveOS",
+            self.iso_staging / "isolinux",
+            self.iso_staging / "boot" / "grub2",
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+
         kernel, initramfs = self._find_kernel_and_initramfs()
-        
+
         if self.mode != "mock":
-            src_kernel = self.target_root / "boot" / kernel
+            src_kernel    = self.target_root / "boot" / kernel
             src_initramfs = self.target_root / "boot" / initramfs
-            pxeboot_dir = self.iso_staging / "images" / "pxeboot"
+            pxeboot_dir   = self.iso_staging / "images" / "pxeboot"
             pxeboot_dir.mkdir(parents=True, exist_ok=True)
 
             if src_kernel.exists():
                 shutil.copy2(src_kernel, pxeboot_dir / kernel)
-                # Also create symlink or copy as vmlinuz for standard loader paths
                 if kernel != "vmlinuz":
                     shutil.copy2(src_kernel, pxeboot_dir / "vmlinuz")
             else:
-                logger.warning(f"Kernel file {src_kernel} not found in rootfs boot directory. Creating placeholder.")
+                logger.warning(f"Kernel {src_kernel} not found — creating placeholder.")
                 (pxeboot_dir / "vmlinuz").touch()
 
             if src_initramfs.exists():
@@ -196,69 +251,188 @@ class ISOEngine:
                 if initramfs != "initrd.img":
                     shutil.copy2(src_initramfs, pxeboot_dir / "initrd.img")
             else:
-                logger.warning(f"Initramfs file {src_initramfs} not found in rootfs boot directory. Creating placeholder.")
+                logger.warning(f"Initramfs {src_initramfs} not found — creating placeholder.")
                 (pxeboot_dir / "initrd.img").touch()
-            
+
         self._clean_rootfs(self.target_root)
         squashfs_path = self.iso_staging / "LiveOS" / "squashfs.img"
         self._create_squashfs(self.target_root, squashfs_path)
-        
+
         grub = Grub2Bootloader(
             self.config,
             self.config.get("basearch", "x86_64"),
             toolchain=self.toolchain,
         )
-        iso_label = self._get_iso_label()
+        iso_label     = self._get_iso_label()
         kernel_params = self._get_kernel_params()
-        
-        with open(self.iso_staging / "boot" / "grub2" / "grub.cfg", "w") as f:
-            f.write(grub.generate_grub_cfg(kernel, initramfs, iso_label, kernel_params))
+
+        # ---- BIOS grub.cfg + earlyboot.cfg + loopback.cfg ------------------
+        self._safe_write_file(
+            self.iso_staging / "boot" / "grub2" / "grub.cfg",
+            grub.generate_grub_cfg(kernel, initramfs, iso_label, kernel_params)
+        )
+        self._safe_write_file(
+            self.iso_staging / "boot" / "grub2" / "earlyboot.cfg",
+            grub.generate_earlyboot_cfg(iso_label)
+        )
+        self._safe_write_file(
+            self.iso_staging / "boot" / "grub2" / "loopback.cfg",
+            grub.generate_loopback_cfg(kernel, initramfs, iso_label, kernel_params)
+        )
+
+        # ---- GRUB2 BIOS modules (i386-pc) -----------------------------------
+        grub._copy_grub_bios_modules(self.iso_staging, self.target_root)
+
+        # ---- GRUB2 font in boot/grub2/fonts/ --------------------------------
+        grub._copy_grub_font(self.iso_staging, self.target_root)
+
+        # ---- mbrid (MBR ID stub used by some grub builds) -------------------
+        mbrid_path = self.iso_staging / "boot" / "mbrid"
+        import hashlib, struct
+        mbrid_val = struct.pack('<I', hash(iso_label) & 0xFFFFFFFF)
+        try:
+            mbrid_path.write_bytes(mbrid_val)
+        except Exception:
+            pass
+
+        # ---- syslinux for BIOS el-torito boot --------------------------------
+        self._safe_write_file(
+            self.iso_staging / "isolinux" / "isolinux.cfg",
+            grub.generate_isolinux_cfg(kernel, initramfs, iso_label, kernel_params)
+        )
             
-        with open(self.iso_staging / "isolinux" / "isolinux.cfg", "w") as f:
-            f.write(grub.generate_isolinux_cfg(kernel, initramfs, iso_label, kernel_params))
-            
+        self._copy_syslinux_binaries()
         grub.generate_efiboot_img(self.iso_staging, self.target_root)
-        
+
         self._create_discinfo(self.iso_staging)
         self._create_treeinfo(self.iso_staging)
-        
+
         from fedora_builder.core.path_utils import resolve_from_project
         iso_path = resolve_from_project(f"output/{self.output_name}.iso")
         iso_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Ensure build_host also sees the output directory
+
         if hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:
             project_root = self.workdir.parent.parent
-            output_in_build_host = self.toolchain.build_host_dir / project_root.relative_to("/") / "output"
-            output_in_build_host.mkdir(parents=True, exist_ok=True)
+            (self.toolchain.build_host_dir / project_root.relative_to("/") / "output").mkdir(parents=True, exist_ok=True)
             (self.toolchain.build_host_dir / "workdir" / "output").mkdir(parents=True, exist_ok=True)
 
         if self.mode == "mock":
             iso_path.touch()
         else:
-            # xorriso runs inside build_host via toolchain.run_tool() — full isolation
-            self.toolchain.run_tool(
-                "xorriso",
-                [
+            # --- Step 1: Generate images/eltorito.img via grub2-mkimage --------
+            # This is the BIOS El Torito boot record (i386-pc-eltorito format).
+            # lorax: grub2-mkimage -O i386-pc-eltorito -d usr/lib/grub/i386-pc
+            #        -o images/eltorito.img -p /boot/grub2 iso9660 biosdisk
+            eltorito_img = self.iso_staging / "images" / "eltorito.img"
+            eltorito_img.parent.mkdir(parents=True, exist_ok=True)
+
+            grub_i386_pc = self.target_root / "usr" / "lib" / "grub" / "i386-pc"
+            if not grub_i386_pc.exists() and hasattr(self.toolchain, "build_host_dir"):
+                grub_i386_pc = self.toolchain.build_host_dir / "usr" / "lib" / "grub" / "i386-pc"
+
+            if grub_i386_pc.exists():
+                try:
+                    self.toolchain.run_tool(
+                        "grub2-mkimage",
+                        [
+                            "-O", "i386-pc-eltorito",
+                            "-d", str(grub_i386_pc),
+                            "-o", str(eltorito_img),
+                            "-p", "/boot/grub2",
+                            "iso9660", "biosdisk",
+                        ]
+                    )
+                    logger.info(f"Generated BIOS El Torito image: {eltorito_img}")
+                except Exception as e:
+                    logger.warning(f"grub2-mkimage failed ({e}), falling back to isolinux for BIOS boot")
+                    eltorito_img = None
+            else:
+                logger.warning("grub2 i386-pc modules not found — skipping eltorito.img generation")
+                eltorito_img = None
+
+            # --- Step 2: Locate boot_hybrid.img (MBR for hybrid ISO) ----------
+            mbr_candidates = [
+                self.target_root / "usr" / "lib" / "grub" / "i386-pc" / "boot_hybrid.img",
+            ]
+            if hasattr(self.toolchain, "build_host_dir"):
+                mbr_candidates.append(
+                    self.toolchain.build_host_dir / "usr" / "lib" / "grub" / "i386-pc" / "boot_hybrid.img"
+                )
+            mbr_img = None
+            for c in mbr_candidates:
+                if c.exists() and c.stat().st_size > 0:
+                    mbr_img = c
+                    break
+
+            # --- Step 3: Build ISO with xorrisofs (lorax-style hybrid GPT) ----
+            # lorax uses xorrisofs with appended GPT partition for UEFI,
+            # rather than a classic El Torito EFI entry.
+            if eltorito_img and eltorito_img.exists() and mbr_img:
+                xorriso_args = [
                     "-as", "mkisofs",
                     "-V", iso_label,
                     "-rock",
                     "-joliet",
-                    # BIOS El Torito boot
+                    # Hybrid MBR (grub2 boot_hybrid.img)
+                    "--grub2-mbr", str(mbr_img),
+                    "-partition_offset", "16",
+                    "-appended_part_as_gpt",
+                    # Append efiboot.img as a GPT partition (EFI System Partition)
+                    "-append_partition", "2",
+                    "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
+                    str(self.iso_staging / "images" / "efiboot.img"),
+                    "-iso_mbr_part_type", "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7",
+                    # BIOS El Torito (grub2 eltorito image)
+                    "-c", "boot.cat",
+                    "--boot-catalog-hide",
+                    "-b", "images/eltorito.img",
+                    "-no-emul-boot",
+                    "-boot-load-size", "4",
+                    "-boot-info-table",
+                    "--grub2-boot-info",
+                    # UEFI (appended GPT partition reference)
+                    "-eltorito-alt-boot",
+                    "-e", "--interval:appended_partition_2:all::",
+                    "-no-emul-boot",
+                    # Graft points (lorax-style explicit file layout)
+                    "-graft-points",
+                    f"images/pxeboot={self.iso_staging / 'images' / 'pxeboot'}",
+                    f"LiveOS={self.iso_staging / 'LiveOS'}",
+                    f"boot/grub2={self.iso_staging / 'boot' / 'grub2'}",
+                    f"boot/grub2/i386-pc={grub_i386_pc}",
+                    f"images/eltorito.img={eltorito_img}",
+                    f"EFI/BOOT={self.iso_staging / 'EFI' / 'BOOT'}",
+                    f"EFI/fedora={self.iso_staging / 'EFI' / 'fedora'}",
+                    f"isolinux={self.iso_staging / 'isolinux'}",
+                ]
+            else:
+                # Fallback: classic El Torito with isolinux (no hybrid GPT)
+                logger.warning("Falling back to classic isolinux El Torito (no grub2-mkimage available)")
+                xorriso_args = [
+                    "-as", "mkisofs",
+                    "-V", iso_label,
+                    "-rock",
+                    "-joliet",
                     "-eltorito-boot", "isolinux/isolinux.bin",
                     "-eltorito-catalog", "isolinux/boot.cat",
                     "-no-emul-boot",
                     "-boot-load-size", "4",
                     "-boot-info-table",
-                    # UEFI boot
                     "-eltorito-alt-boot",
                     "-e", "images/efiboot.img",
                     "-no-emul-boot",
-                    # Output
                     "-o", str(iso_path),
                     str(self.iso_staging),
                 ]
-            )
+
+            if "-graft-points" in xorriso_args:
+                # When using graft-points, output goes at the end
+                xorriso_args += ["-o", str(iso_path)]
+            else:
+                # Fallback already has -o inline
+                pass
+
+            self.toolchain.run_tool("xorriso", xorriso_args)
             self._generate_checksums(iso_path)
             
         return iso_path

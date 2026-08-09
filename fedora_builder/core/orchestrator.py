@@ -9,7 +9,7 @@ from fedora_builder.core.dnf_manager import DNFManager
 from fedora_builder.core.customizer import SystemCustomizer
 from fedora_builder.core.iso_engine import ISOEngine
 from fedora_builder.core.kickstart_manager import KickstartManager
-from fedora_builder.core.path_utils import resolve_from_project
+from fedora_builder.core.path_utils import resolve_from_project, unmount_all_under
 import logging
 
 logger = logging.getLogger("orchestrator")
@@ -22,35 +22,33 @@ class BuildOrchestrator:
         self,
         arch: str = "x86_64",
         config_path: str = "configs/global_build.json",
-        mode: str = "mock",
-        clean: bool = True,
-        release: Optional[str] = "fedora-41",
+        release: Optional[str] = None,
         desktop: Optional[str] = None,
-        kernel: Optional[str] = "kernel",
-        bootloader: Optional[str] = "grub2-hybrid",
-        variant: Optional[str] = "live",
+        kernel: Optional[str] = None,
+        bootloader: Optional[str] = None,
+        variant: Optional[str] = None,
         package_profiles: Optional[List[str]] = None,
         service_profiles: Optional[List[str]] = None,
         repo_profiles: Optional[List[str]] = None,
         live_profile: Optional[str] = None,
-        live_user: Optional[str] = None,
-        live_groups: Optional[List[str]] = None,
         output_format: str = "iso",
         compression: str = "zstd",
+        mode: str = "mock",
+        clean: bool = True,
+        copr_repos: Optional[List[str]] = None,
+        extra_repos: Optional[List[str]] = None,
+        live_user: Optional[str] = None,
+        live_groups: Optional[List[str]] = None,
         generate_manifest: bool = True,
         generate_kickstart: bool = False,
         with_calamares: bool = False,
-        force_isolated_toolchain: bool = False,
-        copr_repos: Optional[List[str]] = None,
-        extra_repos: Optional[List[str]] = None,
         multimedia_codecs: bool = False,
         with_flathub: bool = False,
         with_zram: bool = False,
+        force_isolated_toolchain: bool = False,
     ):
         self.arch = arch
         self.config_path = config_path
-        self.mode = mode
-        self.clean = clean
         self.release = release
         self.desktop = desktop
         self.kernel = kernel
@@ -60,19 +58,24 @@ class BuildOrchestrator:
         self.service_profiles = service_profiles or []
         self.repo_profiles = repo_profiles or []
         self.live_profile = live_profile
+        self.compression = compression
+        self.copr_repos = copr_repos or []
+        self.extra_repos = extra_repos or []
         self.live_user = live_user
         self.live_groups = live_groups or []
         self.output_format = output_format
-        self.compression = compression
+        self.mode = mode.lower()
+        self.clean = clean
         self.generate_manifest = generate_manifest
         self.generate_kickstart = generate_kickstart
         self.with_calamares = with_calamares
-        self.force_isolated_toolchain = force_isolated_toolchain
-        self.copr_repos = copr_repos or []
-        self.extra_repos = extra_repos or []
         self.multimedia_codecs = multimedia_codecs
         self.with_flathub = with_flathub
         self.with_zram = with_zram
+        self.force_isolated_toolchain = force_isolated_toolchain
+
+        if self.with_calamares and "calamares" not in self.package_profiles:
+            self.package_profiles.append("calamares")
 
         if self.multimedia_codecs:
             if "rpmfusion-free" not in self.repo_profiles:
@@ -95,33 +98,7 @@ class BuildOrchestrator:
     def _safe_clean_build_tree(self):
         # Preventively unmount any stale mountpoints before cleaning
         if self.mode != "mock" and os.geteuid() == 0:
-            build_host = self.workdir / "build_host"
-            subdirs = ["chroot", "iso_root", "output", "cache"]
-            output_dir = resolve_from_project("output")
-
-            # Unmount DNF cache and workdir bind-mounts with -l
-            simple_mounts = [
-                self.target_root / "var" / "cache" / "dnf",
-            ]
-            for sub in subdirs:
-                simple_mounts.append(build_host / "workdir" / sub)
-            simple_mounts.append(build_host / "workdir" / "output")
-            simple_mounts.append(build_host / "workdir")
-            for sub in ["chroot", "iso_root", "cache"]:
-                host_sub = self.workdir / sub
-                simple_mounts.append(build_host / host_sub.relative_to("/"))
-            simple_mounts.append(build_host / output_dir.relative_to("/"))
-
-            for mount_path in simple_mounts:
-                if mount_path.exists():
-                    subprocess.run(["umount", "-l", "-f", str(mount_path)], capture_output=True)
-
-            # Use -R (recursive) for rbind pseudo-filesystems
-            for pseudo_root in [self.target_root, build_host]:
-                for pseudo in ["dev", "sys", "proc"]:
-                    target = pseudo_root / pseudo
-                    if target.exists():
-                        subprocess.run(["umount", "-R", "-l", str(target)], capture_output=True)
+            unmount_all_under(resolve_from_project("workdir"))
 
         try:
             if self.target_root.exists():
@@ -174,6 +151,23 @@ class BuildOrchestrator:
         if self.clean:
             self._safe_clean_build_tree()
             
+        from fedora_builder.core.config_loader import ConfigLoader
+        loader = ConfigLoader()
+        assembled_config = loader.assemble_build_config(
+            global_config_path=resolve_from_project(self.config_path),
+            architecture=self.arch,
+            release=self.release or "fedora-41",
+            desktop=self.desktop,
+            kernel=self.kernel,
+            bootloader=self.bootloader,
+            variant=self.variant,
+            package_profiles=self.package_profiles,
+            service_profiles=self.service_profiles,
+            repo_profiles=self.repo_profiles,
+            live_profile=self.live_profile,
+        )
+        self.config.update(assembled_config)
+
         toolchain = ToolchainManager(
             workdir_base=self.workdir,
             mode=self.mode,
@@ -183,7 +177,7 @@ class BuildOrchestrator:
         )
         toolchain.setup()
         
-        cache_dir = self.workdir.parent / "cache"
+        cache_dir = resolve_from_project(f"cache/{self.arch}")
         chroot = ChrootManager(self.target_root, self.mode, cache_dir=cache_dir, arch=self.arch)
         
         try:
@@ -204,7 +198,21 @@ class BuildOrchestrator:
             customizer.configure_live_environment()
             
             if self.mode != "mock":
-                chroot.run_in_chroot(["dracut", "-f", "-N", "--add", "dmsquash-live"])
+                # Find installed kernel version inside target chroot /lib/modules/
+                kver = None
+                modules_dir = self.target_root / "lib" / "modules"
+                if modules_dir.exists():
+                    versions = [d.name for d in modules_dir.iterdir() if d.is_dir()]
+                    if versions:
+                        kver = sorted(versions)[-1]
+                
+                dracut_cmd = ["dracut", "-f", "-N", "--nomdadmconf", "--nolvmconf", "--add", "livenet dmsquash-live dmsquash-live-ntfs convertfs pollcdrom qemu qemu-net"]
+                if kver:
+                    dracut_cmd.extend(["--kver", kver])
+                    logger.info(f"Running Dracut initramfs generation for kernel version {kver}...")
+                else:
+                    logger.info("Running Dracut initramfs generation...")
+                chroot.run_in_chroot(dracut_cmd)
                 
             if self.generate_kickstart:
                 ks_mgr = KickstartManager(self.config)
@@ -246,6 +254,9 @@ class BuildOrchestrator:
                 toolchain.umount_virtual_fs()
             except Exception as e:
                 logger.warning(f"Error unmounting build_host toolchain: {e}")
+
+            if self.mode != "mock" and os.geteuid() == 0:
+                unmount_all_under(resolve_from_project("workdir"))
 
             output_dir = resolve_from_project("output")
             self._fix_output_permissions(output_dir)

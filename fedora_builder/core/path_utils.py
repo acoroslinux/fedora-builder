@@ -1,8 +1,49 @@
 import os
+import subprocess
+import logging
 from pathlib import Path
+
+logger = logging.getLogger("path_utils")
 
 def get_project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 def resolve_from_project(relative_path) -> Path:
     return get_project_root() / Path(relative_path)
+
+def unmount_all_under(target_dir: Path) -> None:
+    """
+    Scans /proc/mounts for all active mountpoints inside target_dir
+    and unmounts them in reverse order (deepest path first).
+    Guarantees clean directory removal without 'Device or resource busy' errors.
+    """
+    if os.geteuid() != 0:
+        return
+
+    target_resolved = target_dir.resolve()
+    target_str = str(target_resolved)
+
+    mounts = []
+    if os.path.exists("/proc/mounts"):
+        try:
+            with open("/proc/mounts", "r") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        mp = parts[1].replace("\\040", " ").replace("\\011", "\t")
+                        try:
+                            mp_path = Path(mp).resolve()
+                            mp_str = str(mp_path)
+                            if mp_str == target_str or mp_str.startswith(target_str + "/"):
+                                mounts.append(mp_str)
+                        except Exception:
+                            if mp == target_str or mp.startswith(target_str + "/"):
+                                mounts.append(mp)
+        except Exception as e:
+            logger.warning(f"Error reading /proc/mounts: {e}")
+
+    unique_mounts = list(dict.fromkeys(mounts))
+    unique_mounts.sort(key=lambda m: len(m), reverse=True)
+
+    for mp in unique_mounts:
+        subprocess.run(["umount", "-l", "-f", mp], capture_output=True)

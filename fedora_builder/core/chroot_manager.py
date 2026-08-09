@@ -110,24 +110,25 @@ class ChrootManager:
         # which hits 'move_mount() failed: No space left on device' when many
         # mounts are already active on the host.
         pseudo_mounts = [
-            (Path("/proc"), self.target_root / "proc"),
-            (Path("/sys"),  self.target_root / "sys"),
-            (Path("/dev"),  self.target_root / "dev"),
+            ("proc",     self.target_root / "proc",        "proc",     None),
+            ("sysfs",    self.target_root / "sys",         "sysfs",    None),
+            ("devtmpfs", self.target_root / "dev",         "devtmpfs", None),
+            ("devpts",   self.target_root / "dev" / "pts", "devpts",   None),
+            ("tmpfs",    self.target_root / "dev" / "shm", "tmpfs",    None),
         ]
 
-        for host_src, target in pseudo_mounts:
+        for src, target, fstype, opts in pseudo_mounts:
             try:
                 target.mkdir(parents=True, exist_ok=True)
-                res = subprocess.run(
-                    ["mount", "--rbind", str(host_src), str(target)],
-                    capture_output=True, text=True,
-                )
+                cmd = ["mount", "-t", fstype]
+                if opts:
+                    cmd.extend(["-o", opts])
+                cmd.extend([src, str(target)])
+                res = subprocess.run(cmd, capture_output=True, text=True)
                 if res.returncode != 0 and "already mounted" not in res.stderr:
-                    logger.warning(f"Failed to rbind {host_src} at {target}: {res.stderr.strip()}")
-                else:
-                    subprocess.run(["mount", "--make-rslave", str(target)], capture_output=True)
+                    logger.warning(f"Failed to mount {src} at {target}: {res.stderr.strip()}")
             except Exception as e:
-                logger.warning(f"Failed to bind-mount {host_src} at {target}: {e}")
+                logger.warning(f"Failed to mount {src} at {target}: {e}")
 
         if self.cache_dir:
             dnf_cache_host = self.cache_dir / "dnf"
@@ -158,11 +159,11 @@ class ChrootManager:
         if dnf_cache.exists():
             subprocess.run(["umount", "-l", "-f", str(dnf_cache)], capture_output=True)
 
-        # Recursively unmount rbind pseudo-filesystems
-        for pseudo in ["dev", "sys", "proc"]:
+        # Unmount pseudo-filesystems non-recursively (never use -R as it unmounts host /dev/pts)
+        for pseudo in ["dev/pts", "dev/shm", "dev", "sys", "proc"]:
             target = self.target_root / pseudo
             if target.exists():
-                subprocess.run(["umount", "-R", "-l", str(target)], capture_output=True)
+                subprocess.run(["umount", "-l", "-f", str(target)], capture_output=True)
 
         self.is_mounted = False
 

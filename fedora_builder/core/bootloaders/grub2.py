@@ -1,56 +1,366 @@
-import os
+import logging
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+logger = logging.getLogger("grub2")
+
 
 class Grub2Bootloader:
     def __init__(self, config: Dict[str, Any], arch: str, iso_uuid: str = "", toolchain=None):
         self.config = config
         self.arch = arch
         self.iso_uuid = iso_uuid
-        self.toolchain = toolchain  # ToolchainManager instance for isolated execution
+        self.toolchain = toolchain
 
-    def generate_grub_cfg(self, kernel_name: str, initramfs_name: str, iso_label: str, kernel_params: str) -> str:
-        cfg = "set default=0\nset timeout=5\n\n"
-        cfg += "menuentry 'Start Fedora Live' {\n"
-        cfg += f"    linux /images/pxeboot/{kernel_name} root=live:CDLABEL={iso_label} rd.live.image {kernel_params}\n"
-        cfg += f"    initrd /images/pxeboot/{initramfs_name}\n"
+    # -------------------------------------------------------------------------
+    # grub.cfg for BIOS boot  (boot/grub2/grub.cfg)
+    # -------------------------------------------------------------------------
+    def generate_grub_cfg(self, kernel_name: str, initramfs_name: str,
+                          iso_label: str, kernel_params: str) -> str:
+        root_param = f"root=live:CDLABEL={iso_label}"
+        kernel_path = "/images/pxeboot/vmlinuz"
+        initrd_path = "/images/pxeboot/initrd.img"
+
+        cfg  = "set default=0\n"
+        cfg += "set timeout=5\n\n"
+        cfg += f"search --no-floppy --set=root -l '{iso_label}'\n\n"
+
+        cfg += f"menuentry 'Start Fedora Modern' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
+        cfg += f"\tinitrd {initrd_path}\n"
+        cfg += "}\n"
+
+        cfg += f"menuentry 'Test this media & start Fedora Modern' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image rd.live.check {kernel_params}\n"
+        cfg += f"\tinitrd {initrd_path}\n"
+        cfg += "}\n"
+
+        cfg += "submenu 'Troubleshooting -->' {\n"
+        cfg += f"\tmenuentry 'Start Fedora Modern in basic graphics mode' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"\t\tlinux {kernel_path} {root_param} rd.live.image nomodeset {kernel_params}\n"
+        cfg += f"\t\tinitrd {initrd_path}\n"
+        cfg += "\t}\n"
+        cfg += "}\n"
+
+        return cfg
+
+    # -------------------------------------------------------------------------
+    # earlyboot.cfg (boot/grub2/earlyboot.cfg)
+    # -------------------------------------------------------------------------
+    def generate_earlyboot_cfg(self, iso_label: str) -> str:
+        return f"search --no-floppy --set=root -l '{iso_label}'\nset prefix=($root)/boot/grub2\n"
+
+    # -------------------------------------------------------------------------
+    # loopback.cfg (boot/grub2/loopback.cfg)
+    # -------------------------------------------------------------------------
+    def generate_loopback_cfg(self, kernel_name: str, initramfs_name: str,
+                               iso_label: str, kernel_params: str) -> str:
+        root_param = f"root=live:CDLABEL={iso_label}"
+        kernel_path = "/images/pxeboot/vmlinuz"
+        initrd_path = "/images/pxeboot/initrd.img"
+
+        cfg  = "function load_video {\n"
+        cfg += "  insmod efi_gop\n  insmod efi_uga\n  insmod video_bochs\n"
+        cfg += "  insmod video_cirrus\n  insmod all_video\n}\n\n"
+        cfg += "load_video\nset gfxpayload=keep\ninsmod gzio\ninsmod part_gpt\ninsmod ext2\n\n"
+        cfg += f"search --no-floppy --set=root -l '{iso_label}'\n\n"
+        cfg += f"menuentry 'Start Fedora Modern' {{\n"
+        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
+        cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
         return cfg
 
-    def generate_isolinux_cfg(self, kernel_name: str, initramfs_name: str, iso_label: str, kernel_params: str) -> str:
-        cfg = "default vesamenu.c32\ntimeout 50\n\n"
+    # -------------------------------------------------------------------------
+    # isolinux.cfg for BIOS legacy syslinux boot
+    # -------------------------------------------------------------------------
+    def generate_isolinux_cfg(self, kernel_name: str, initramfs_name: str,
+                               iso_label: str, kernel_params: str) -> str:
+        root_param = f"root=live:CDLABEL={iso_label}"
+        cfg  = "default vesamenu.c32\n"
+        cfg += "timeout 50\n\n"
         cfg += "label linux\n"
-        cfg += "  menu label Start Fedora Live\n"
-        cfg += f"  kernel /images/pxeboot/{kernel_name}\n"
-        cfg += f"  append initrd=/images/pxeboot/{initramfs_name} root=live:CDLABEL={iso_label} rd.live.image {kernel_params}\n"
+        cfg += "  menu label Start Fedora Modern\n"
+        cfg += "  kernel /images/pxeboot/vmlinuz\n"
+        cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image {kernel_params}\n"
+        cfg += "\nlabel check\n"
+        cfg += "  menu label Test this media & start Fedora Modern\n"
+        cfg += "  kernel /images/pxeboot/vmlinuz\n"
+        cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image rd.live.check {kernel_params}\n"
         return cfg
 
+    # -------------------------------------------------------------------------
+    # EFI grub.cfg  (EFI/BOOT/grub.cfg  AND  EFI/fedora/grub.cfg)
+    # -------------------------------------------------------------------------
+    def generate_efi_grub_cfg(self, iso_label: str, kernel_params: str) -> str:
+        root_param = f"root=live:CDLABEL={iso_label}"
+        kernel_path = "/images/pxeboot/vmlinuz"
+        initrd_path = "/images/pxeboot/initrd.img"
+
+        cfg  = "function load_video {\n"
+        cfg += "  insmod efi_gop\n  insmod efi_uga\n  insmod video_bochs\n"
+        cfg += "  insmod video_cirrus\n  insmod all_video\n}\n\n"
+        cfg += "load_video\nset gfxpayload=keep\n"
+        cfg += "insmod gzio\ninsmod part_gpt\ninsmod ext2\n\n"
+        cfg += f"set timeout=60\n\n"
+        cfg += f"search --no-floppy --set=root -l '{iso_label}'\n\n"
+
+        cfg += f"menuentry 'Start Fedora Modern' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
+        cfg += f"\tinitrd {initrd_path}\n"
+        cfg += "}\n"
+
+        cfg += f"menuentry 'Test this media & start Fedora Modern' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image rd.live.check {kernel_params}\n"
+        cfg += f"\tinitrd {initrd_path}\n"
+        cfg += "}\n"
+
+        cfg += "submenu 'Troubleshooting -->' {\n"
+        cfg += f"\tmenuentry 'Start Fedora Modern in basic graphics mode' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"\t\tlinux {kernel_path} {root_param} rd.live.image nomodeset {kernel_params}\n"
+        cfg += f"\t\tinitrd {initrd_path}\n"
+        cfg += "\t}\n"
+        cfg += "}\n"
+
+        return cfg
+
+    # -------------------------------------------------------------------------
+    # Copy GRUB2 BIOS modules  (boot/grub2/i386-pc/)
+    # -------------------------------------------------------------------------
+    def _copy_grub_bios_modules(self, iso_staging: Path, rootfs: Path):
+        """Copy all i386-pc GRUB2 modules and generate core.img for hybrid BIOS boot."""
+        src_dirs = [
+            rootfs / "usr" / "lib" / "grub" / "i386-pc",
+        ]
+        # Also check build_host chroot
+        if self.toolchain and hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:
+            src_dirs.append(self.toolchain.build_host_dir / "usr" / "lib" / "grub" / "i386-pc")
+
+        grub_bios_dst = iso_staging / "boot" / "grub2" / "i386-pc"
+
+        for src in src_dirs:
+            if src.exists() and any(src.iterdir()):
+                grub_bios_dst.mkdir(parents=True, exist_ok=True)
+                for f in src.iterdir():
+                    try:
+                        shutil.copy2(f, grub_bios_dst / f.name)
+                    except Exception as e:
+                        logger.debug(f"Skipping {f.name}: {e}")
+                logger.info(f"Copied GRUB2 BIOS modules from {src} → {grub_bios_dst}")
+                return True
+
+        logger.warning("GRUB2 i386-pc modules not found — BIOS boot will not work!")
+        return False
+
+    # -------------------------------------------------------------------------
+    # Copy GRUB2 EFI modules (boot/grub2/x86_64-efi/) and generate core.efi
+    # -------------------------------------------------------------------------
+    def _copy_grub_efi_modules(self, iso_staging: Path, rootfs: Path):
+        """Copy all x86_64-efi GRUB2 modules."""
+        src_dirs = [
+            rootfs / "usr" / "lib" / "grub" / "x86_64-efi",
+        ]
+        if self.toolchain and hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:
+            src_dirs.append(self.toolchain.build_host_dir / "usr" / "lib" / "grub" / "x86_64-efi")
+
+        grub_efi_dst = iso_staging / "boot" / "grub2" / "x86_64-efi"
+
+        for src in src_dirs:
+            if src.exists() and any(src.iterdir()):
+                grub_efi_dst.mkdir(parents=True, exist_ok=True)
+                for f in src.iterdir():
+                    try:
+                        shutil.copy2(f, grub_efi_dst / f.name)
+                    except Exception as e:
+                        logger.debug(f"Skipping {f.name}: {e}")
+                logger.info(f"Copied GRUB2 EFI modules from {src} → {grub_efi_dst}")
+                return True
+
+        logger.warning("GRUB2 x86_64-efi modules not found")
+        return False
+
+    # -------------------------------------------------------------------------
+    # Copy unicode font
+    # -------------------------------------------------------------------------
+    def _copy_grub_font(self, iso_staging: Path, rootfs: Path):
+        font_dst = iso_staging / "boot" / "grub2" / "fonts"
+        font_dst.mkdir(parents=True, exist_ok=True)
+        search_paths = [
+            rootfs / "usr" / "share" / "grub" / "unicode.pf2",
+            rootfs / "usr" / "share" / "grub2" / "unicode.pf2",
+        ]
+        for p in search_paths:
+            if p.exists():
+                shutil.copy2(p, font_dst / "unicode.pf2")
+                return
+
+    # -------------------------------------------------------------------------
+    # Locate EFI binaries from chroot
+    # -------------------------------------------------------------------------
+    def _find_efi_binaries(self, rootfs: Path) -> dict:
+        """Find shimx64, grubx64, mmx64 (and i32 variants) in rootfs."""
+        found = {
+            "shim_x64": None, "grub_x64": None, "mm_x64": None,
+            "gcd_x64": None,
+            "shim_ia32": None, "grub_ia32": None, "mm_ia32": None,
+            "gcd_ia32": None,
+            "fb_x64": None, "fb_ia32": None,
+        }
+        efi_root = rootfs / "boot" / "efi" / "EFI"
+        if not efi_root.exists():
+            # Fallback: search entire rootfs
+            efi_root = rootfs
+
+        for p in efi_root.rglob("*.efi"):
+            n = p.name.lower()
+            if n in ("shimx64.efi", "shim.efi") and not found["shim_x64"]:
+                found["shim_x64"] = p
+            elif n == "shimia32.efi" and not found["shim_ia32"]:
+                found["shim_ia32"] = p
+            elif n == "grubx64.efi" and not found["grub_x64"]:
+                found["grub_x64"] = p
+            elif n == "grubia32.efi" and not found["grub_ia32"]:
+                found["grub_ia32"] = p
+            elif n == "mmx64.efi" and not found["mm_x64"]:
+                found["mm_x64"] = p
+            elif n == "mmia32.efi" and not found["mm_ia32"]:
+                found["mm_ia32"] = p
+            elif n == "gcdx64.efi" and not found["gcd_x64"]:
+                found["gcd_x64"] = p
+            elif n == "gcdia32.efi" and not found["gcd_ia32"]:
+                found["gcd_ia32"] = p
+            elif n in ("fbx64.efi", "fallback.efi") and not found["fb_x64"]:
+                found["fb_x64"] = p
+            elif n == "fbia32.efi" and not found["fb_ia32"]:
+                found["fb_ia32"] = p
+
+        return found
+
+    # -------------------------------------------------------------------------
+    # Build the complete EFI tree on the ISO:
+    #   EFI/BOOT/   – standard UEFI boot location
+    #   EFI/fedora/ – distribution specific (for Secure Boot)
+    # Also produces images/efiboot.img (FAT image embedding EFI/BOOT)
+    # -------------------------------------------------------------------------
     def generate_efiboot_img(self, iso_staging: Path, effective_root: Path) -> Path:
+        iso_label = self.config.get("system", {}).get("iso_label", "FEDORA-MODERN")
+        if "iso_label" in self.config:
+            iso_label = self.config["iso_label"]
+
+        kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
+        if "kernel_params" in self.config:
+            kernel_params = self.config["kernel_params"]
+        if "rd.live.image" not in kernel_params:
+            kernel_params = f"rd.live.image {kernel_params}"
+
+        # ---- EFI/BOOT/ -------------------------------------------------------
+        efi_boot_dir = iso_staging / "EFI" / "BOOT"
+        efi_boot_dir.mkdir(parents=True, exist_ok=True)
+
+        # ---- EFI/fedora/ (Fedora Secure Boot chain) -------------------------
+        efi_fed_dir = iso_staging / "EFI" / "fedora"
+        efi_fed_dir.mkdir(parents=True, exist_ok=True)
+
+        # ---- GRUB2 font in EFI -----------------------------------------------
+        efi_fonts = efi_boot_dir / "fonts"
+        efi_fonts.mkdir(parents=True, exist_ok=True)
+        font_src = effective_root / "usr" / "share" / "grub" / "unicode.pf2"
+        if font_src.exists():
+            shutil.copy2(font_src, efi_fonts / "unicode.pf2")
+
+        # ---- Locate EFI binaries --------------------------------------------
+        efi_bins = self._find_efi_binaries(effective_root)
+
+        # Copy to EFI/BOOT (standard names required by UEFI spec)
+        # shimx64 → BOOTX64.EFI  (or grubx64 if no shim)
+        if efi_bins["shim_x64"]:
+            shutil.copy2(efi_bins["shim_x64"], efi_boot_dir / "BOOTX64.EFI")
+        
+        grub_x64_src = efi_bins.get("gcd_x64") or efi_bins.get("grub_x64")
+        if grub_x64_src:
+            shutil.copy2(grub_x64_src, efi_boot_dir / "grubx64.efi")
+        if efi_bins["mm_x64"]:
+            shutil.copy2(efi_bins["mm_x64"], efi_boot_dir / "mmx64.efi")
+        if efi_bins["fb_x64"]:
+            shutil.copy2(efi_bins["fb_x64"], efi_boot_dir / "fbx64.efi")
+
+        # 32-bit UEFI (tablets/older firmware)
+        if efi_bins["shim_ia32"]:
+            shutil.copy2(efi_bins["shim_ia32"], efi_boot_dir / "BOOTIA32.EFI")
+        
+        grub_ia32_src = efi_bins.get("gcd_ia32") or efi_bins.get("grub_ia32")
+        if grub_ia32_src:
+            shutil.copy2(grub_ia32_src, efi_boot_dir / "grubia32.efi")
+        if efi_bins["mm_ia32"]:
+            shutil.copy2(efi_bins["mm_ia32"], efi_boot_dir / "mmia32.efi")
+        if efi_bins["fb_ia32"]:
+            shutil.copy2(efi_bins["fb_ia32"], efi_boot_dir / "fbia32.efi")
+
+        # Copy to EFI/fedora/ (Fedora Secure Boot chain)
+        for name, src in [
+            ("shimx64.efi",  efi_bins["shim_x64"]),
+            ("shim.efi",     efi_bins["shim_x64"]),
+            ("grubx64.efi",  grub_x64_src),
+            ("mmx64.efi",    efi_bins["mm_x64"]),
+            ("gcdx64.efi",   efi_bins["gcd_x64"]),
+            ("shimia32.efi", efi_bins["shim_ia32"]),
+            ("grubia32.efi", grub_ia32_src),
+            ("mmia32.efi",   efi_bins["mm_ia32"]),
+            ("gcdia32.efi",  efi_bins["gcd_ia32"]),
+        ]:
+            if src:
+                shutil.copy2(src, efi_fed_dir / name)
+
+        # Fedora BOOTX64.CSV / BOOTIA32.CSV (optional, for some firmware)
+        for csv_name in ("BOOTX64.CSV", "BOOTIA32.CSV"):
+            src_csv_paths = [
+                effective_root / "boot" / "efi" / "EFI" / "fedora" / csv_name,
+            ]
+            for c in src_csv_paths:
+                if c.exists():
+                    shutil.copy2(c, efi_fed_dir / csv_name)
+                    break
+
+        # ---- Write EFI grub.cfg everywhere it is needed ---------------------
+        efi_cfg_content = self.generate_efi_grub_cfg(iso_label, kernel_params)
+        (efi_boot_dir / "grub.cfg").write_text(efi_cfg_content)
+        (efi_fed_dir  / "grub.cfg").write_text(efi_cfg_content)
+
+        # ---- Generate efiboot.img (FAT image of EFI/BOOT/) ------------------
         img_path = iso_staging / "images" / "efiboot.img"
         img_path.parent.mkdir(parents=True, exist_ok=True)
 
         if self.toolchain and self.toolchain.mode != "mock":
-            # Run mkfs.fat/mformat inside the isolated build_host where dosfstools is installed
             try:
+                # 40 MB FAT image (increased from 20MB to fit all EFI binaries)
                 self.toolchain.run_in_build_host(
-                    ["dd", "if=/dev/zero", f"of={img_path}", "bs=1M", "count=10"],
+                    ["dd", "if=/dev/zero", f"of={img_path}", "bs=1M", "count=40"],
                     check=True,
                 )
                 self.toolchain.run_in_build_host(
-                    ["mkfs.fat", "-F", "12", "-n", "EFI", str(img_path)],
+                    ["mkfs.fat", "-n", "EFI", str(img_path)],
                     check=True,
                 )
-                return img_path
+                # Inject EFI/BOOT into FAT image via mcopy
+                if hasattr(self.toolchain, "workdir_base"):
+                    rel_img = img_path.relative_to(self.toolchain.workdir_base)
+                    bh_img  = Path("/workdir") / rel_img
+                    rel_efi = (iso_staging / "EFI").relative_to(self.toolchain.workdir_base)
+                    bh_efi  = Path("/workdir") / rel_efi
+                    self.toolchain.run_in_build_host(
+                        ["mcopy", "-i", str(bh_img), "-s", str(bh_efi), "::/"],
+                        check=True,
+                    )
             except Exception as e:
-                import logging
-                logging.getLogger("grub2").warning(f"mkfs.fat in build_host failed ({e}), creating empty efiboot.img placeholder.")
+                logger.warning(f"efiboot.img generation failed ({e}), creating placeholder.")
                 img_path.touch()
-                return img_path
+        else:
+            try:
+                img_path.touch()
+            except PermissionError:
+                pass
 
-        # mock mode or no toolchain — create placeholder
-        img_path.touch()
         return img_path
 
     def prepare_files(self, iso_staging: Path, rootfs: Path):

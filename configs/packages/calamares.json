@@ -2,8 +2,5 @@
   "packages": [
     "calamares",
     "kpmcore"
-  ],
-  "repos": [
-    "copr:copr.fedorainfracloud.org:arivenitez:calamares"
   ]
 }

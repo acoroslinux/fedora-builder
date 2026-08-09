@@ -9,9 +9,7 @@
     "gstreamer1-plugins-ugly",
     "gstreamer1-plugin-openh264",
     "lame",
-    "faad2",
-    "rhythmbox",
-    "totem"
+    "faad2"
   ],
   "repos": [
     "rpmfusion-free",

@@ -119,6 +119,20 @@ class TestInstallPackages:
         # Should not raise — groups should be silently skipped or handled separately
         dnf_mgr.install_packages(["vim", "@core", "git"])
 
+    def test_real_install_allows_erasing_for_package_replacements(self, tmp_path, mock_config):
+        rootfs = tmp_path / "rootfs"
+        rootfs.mkdir(parents=True)
+        mock_config["system"]["dnf_cache"] = str(tmp_path / "dnf-cache")
+        chroot = ChrootManager(target_root=rootfs, mode="real", arch="x86_64")
+        mgr = DNFManager(chroot=chroot, config=mock_config)
+        mgr._run_dnf = MagicMock(return_value=MagicMock(returncode=0))
+
+        mgr.install_packages(["ffmpeg"])
+
+        args = mgr._run_dnf.call_args.args[0]
+        assert "--allowerasing" in args
+        assert args.index("--allowerasing") < args.index("install")
+
 
 # ── test_install_groups ───────────────────────────────────────────────────────────
 
@@ -135,6 +149,20 @@ class TestInstallGroups:
     def test_install_groups_without_at_prefix(self, dnf_mgr):
         """Should handle group names with or without @ prefix."""
         dnf_mgr.install_groups(["gnome-desktop"])
+
+    def test_real_group_install_allows_erasing_for_package_replacements(self, tmp_path, mock_config):
+        rootfs = tmp_path / "rootfs"
+        rootfs.mkdir(parents=True)
+        mock_config["system"]["dnf_cache"] = str(tmp_path / "dnf-cache")
+        chroot = ChrootManager(target_root=rootfs, mode="real", arch="x86_64")
+        mgr = DNFManager(chroot=chroot, config=mock_config)
+        mgr._run_dnf = MagicMock(return_value=MagicMock(returncode=0))
+
+        mgr.install_groups(["multimedia"])
+
+        args = mgr._run_dnf.call_args.args[0]
+        assert "--allowerasing" in args
+        assert args.index("--allowerasing") < args.index("install")
 
 
 # ── test_install_all ──────────────────────────────────────────────────────────────

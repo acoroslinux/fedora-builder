@@ -23,11 +23,11 @@ class DNFManager:
         Identical to void-builder's cache resolution strategy.
         """
         arch = getattr(self.chroot, "arch", "x86_64")
-        cache_path_str = self.config.get("system", {}).get("dnf_cache", "workdir/cache/dnf")
+        cache_path_str = self.config.get("system", {}).get("dnf_cache", f"cache/{arch}/dnf")
         candidate = Path(cache_path_str)
         if not candidate.is_absolute():
             from fedora_builder.core.path_utils import resolve_from_project
-            candidate = resolve_from_project(candidate) / arch
+            candidate = resolve_from_project(candidate)
 
         try:
             candidate.mkdir(parents=True, exist_ok=True)
@@ -85,15 +85,30 @@ class DNFManager:
             return
         logger.info("Importing GPG keys")
 
-    def configure_repos(self, repos: List[Dict]):
+    def configure_repos(self, repos: List[Any]):
         repo_dir = self.target_root / "etc" / "yum.repos.d"
         if self.chroot.mode == "mock":
             repo_dir.mkdir(parents=True, exist_ok=True)
             return
             
         repo_dir.mkdir(parents=True, exist_ok=True)
+        from fedora_builder.core.config_loader import ConfigLoader
+        loader = ConfigLoader()
+
         for repo in repos:
+            if isinstance(repo, str):
+                loaded = loader.load_profile("repos", repo)
+                if loaded:
+                    repo = loaded
+                else:
+                    repo = {
+                        "repo_id": repo,
+                        "install_package": f"https://mirrors.rpmfusion.org/free/fedora/{repo}-release-{self.config.get('releasever', '41')}.noarch.rpm" if "rpmfusion" in repo else None
+                    }
+
             repo_id = repo.get("repo_id")
+            if not repo_id:
+                continue
             repo_name = repo.get("repo_name", repo_id)
             metalink = repo.get("metalink")
             baseurl = repo.get("baseurl")
@@ -116,7 +131,7 @@ class DNFManager:
                 repo_content += f"metalink={metalink}\n"
             elif baseurl:
                 repo_content += f"baseurl={baseurl}\n"
-            repo_content += f"enabled={enabled}\ngpgcheck={gpgcheck}\n"
+            repo_content += f"enabled={enabled}\ngpgcheck={gpgcheck}\nskip_if_unavailable=True\n"
             if gpgkey:
                 repo_content += f"gpgkey={gpgkey}\n"
                 
@@ -127,9 +142,31 @@ class DNFManager:
         url = rpmfusion_config.get("install_package")
         if not url:
             return
-        args = ["--installroot", str(self.target_root), "-y", "install", url]
+        basearch = self.config.get("basearch", "x86_64")
+        url = url.replace("$releasever", str(releasever)).replace("$basearch", str(basearch))
+        args = self._get_base_dnf_args() + ["-y", "--nogpgcheck", "install", url]
         if self.chroot.mode != "mock":
-            self._run_dnf(args)
+            logger.info(f"Installing RPMFusion release package from {url}...")
+            res = self._run_dnf(args)
+            if res.returncode != 0:
+                logger.warning(f"Could not install RPMFusion release package from {url}: {res.stderr}")
+
+            gpg_dir = self.target_root / "etc" / "pki" / "rpm-gpg"
+            gpg_dir.mkdir(parents=True, exist_ok=True)
+            for repo_type in ["free", "nonfree"]:
+                key_name = f"RPM-GPG-KEY-rpmfusion-{repo_type}-fedora-{releasever}"
+                key_file = gpg_dir / key_name
+                if not key_file.exists():
+                    key_url = f"https://rpmfusion.org/keys?action=AttachFile&do=get&target={key_name}"
+                    import urllib.request
+                    try:
+                        logger.info(f"Downloading missing GPG key: {key_name}...")
+                        urllib.request.urlretrieve(key_url, key_file)
+                    except Exception as e:
+                        logger.warning(f"Could not download {key_name}: {e}")
+
+                if key_file.exists():
+                    self.chroot.run_in_chroot(["rpm", "--import", f"/etc/pki/rpm-gpg/{key_name}"], check=False)
 
     def bootstrap_rootfs(self, releasever: str, basearch: str, use_seed: bool = True):
         if self.chroot.mode == "mock":
@@ -141,18 +178,24 @@ class DNFManager:
                 logger.debug("Mock rootfs directory creation ignored due to root permissions.")
             return
 
+        self.target_root.mkdir(parents=True, exist_ok=True)
+        (self.target_root / "var" / "log").mkdir(parents=True, exist_ok=True)
+
         cache_dir = self.resolve_cache_dir()
-        seed_cache = cache_dir / f"seed-fedora-{releasever}-{basearch}.tar.xz"
+        seed_cache = cache_dir.parent / f"seed-fedora-{releasever}-{basearch}.tar.gz"
 
         if use_seed and seed_cache.exists():
             logger.info(f"⚡ Fast-bootstrapping Fedora rootfs from local seed tarball: {seed_cache}")
-            self.target_root.mkdir(parents=True, exist_ok=True)
-            res = subprocess.run(["tar", "xpf", str(seed_cache), "-C", str(self.target_root), "--numeric-owner"])
+            res = subprocess.run(["tar", "xzpf", str(seed_cache), "-C", str(self.target_root), "--numeric-owner"])
             if res.returncode == 0:
                 logger.info("Successfully bootstrapped Fedora rootfs from local seed tarball in seconds!")
                 return
             else:
-                logger.warning("Local seed tarball extraction failed. Falling back to DNF @core bootstrap.")
+                logger.warning("Local seed tarball extraction failed (archive corrupt). Removing bad seed and falling back to DNF @core bootstrap.")
+                try:
+                    seed_cache.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
         args = self._get_base_dnf_args() + [
             f"--releasever={releasever}",
@@ -169,9 +212,9 @@ class DNFManager:
 
         # Save rootfs seed tarball for instant future builds (excluding virtual kernel filesystems)
         try:
-            logger.info(f"Caching Fedora rootfs seed tarball to {seed_cache}...")
+            logger.info(f"⚡ Fast-caching Fedora rootfs seed tarball to {seed_cache}...")
             subprocess.run([
-                "tar", "cJpf", str(seed_cache),
+                "tar", "czpf", str(seed_cache),
                 "--exclude=./proc/*", "--exclude=./sys/*", "--exclude=./dev/*", "--exclude=./tmp/*", "--exclude=./run/*",
                 "-C", str(self.target_root), "."
             ], check=False)
@@ -190,6 +233,9 @@ class DNFManager:
             args.append("--use-host-config")
         return args
 
+    def _get_install_dnf_args(self) -> List[str]:
+        return self._get_base_dnf_args() + ["--allowerasing"]
+
     def install_packages(self, packages: List[str]):
         if not packages:
             return
@@ -198,7 +244,7 @@ class DNFManager:
             return
         if self.chroot.mode == "mock":
             return
-        args = self._get_base_dnf_args() + ["-y", "install"] + real_pkgs
+        args = self._get_install_dnf_args() + ["-y", "install"] + real_pkgs
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Package installation failed")
@@ -206,10 +252,10 @@ class DNFManager:
     def install_groups(self, groups: List[str]):
         if not groups:
             return
-        real_groups = [g.lstrip("@") for g in groups]
+        formatted_groups = [g if g.startswith("@") else f"@{g}" for g in groups]
         if self.chroot.mode == "mock":
             return
-        args = self._get_base_dnf_args() + ["-y", "groupinstall"] + real_groups
+        args = self._get_install_dnf_args() + ["-y", "install"] + formatted_groups
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Group installation failed")

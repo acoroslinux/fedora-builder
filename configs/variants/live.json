@@ -1,7 +1,12 @@
 {
   "variant": "live",
   "description": "Bootable live desktop image with Calamares installer",
-  "packages": ["dracut-live", "dracut-squash", "livecd-tools"],
+  "packages": [
+    "dracut-live", "dracut-squash", "livecd-tools",
+    "grub2-tools-efi", "efibootmgr", "shim-x64", "grub2-efi-x64-cdboot",
+    "shim-ia32", "grub2-efi-ia32-cdboot", "biosdevname",
+    "grub2-tools", "grub2-tools-minimal", "grub2-tools-extra", "grub2-pc-modules"
+  ],
   "services_enable": [],
   "live_media": true,
   "include_installer": true,

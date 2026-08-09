@@ -139,7 +139,7 @@ class ToolchainManager:
         # The isolated Fedora chroot used for running build tools (sibling to arch workdir, preventing recursive mounts)
         self.build_host_dir = self.workdir_base.parent / "build_host"
         # Persistent download cache (shared between builds)
-        self.cache_dir = self.workdir_base.parent / "cache"
+        self.cache_dir = _resolve_from_project(f"cache/{self.target_arch}")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.is_mounted: bool = False
@@ -319,28 +319,25 @@ class ToolchainManager:
         # Creating NEW filesystems with -t proc/sysfs/devtmpfs hits the kernel's mount namespace
         # limit with "move_mount() failed: No space left on device" when many mounts are already active.
         pseudo_mounts = [
-            (Path("/proc"),     self.build_host_dir / "proc"),
-            (Path("/sys"),      self.build_host_dir / "sys"),
-            (Path("/dev"),      self.build_host_dir / "dev"),
+            ("proc",     self.build_host_dir / "proc",        "proc",     None),
+            ("sysfs",    self.build_host_dir / "sys",         "sysfs",    None),
+            ("devtmpfs", self.build_host_dir / "dev",         "devtmpfs", None),
+            ("devpts",   self.build_host_dir / "dev" / "pts", "devpts",   None),
+            ("tmpfs",    self.build_host_dir / "dev" / "shm", "tmpfs",    None),
         ]
 
-        for host_src, target in pseudo_mounts:
-            target.mkdir(parents=True, exist_ok=True)
-            if not host_src.exists():
-                logger.warning(f"Host path {host_src} does not exist, skipping bind-mount.")
-                continue
-            res = subprocess.run(
-                ["mount", "--rbind", str(host_src), str(target)],
-                capture_output=True, text=True,
-            )
-            if res.returncode != 0 and "already mounted" not in res.stderr:
-                logger.warning(f"Could not bind-mount {host_src} → {target}: {res.stderr.strip()}")
-            else:
-                # Make the bind-mount read-writable and slave so host changes propagate
-                subprocess.run(
-                    ["mount", "--make-rslave", str(target)],
-                    capture_output=True,
-                )
+        for src, target, fstype, opts in pseudo_mounts:
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                cmd = ["mount", "-t", fstype]
+                if opts:
+                    cmd.extend(["-o", opts])
+                cmd.extend([src, str(target)])
+                res = subprocess.run(cmd, capture_output=True, text=True)
+                if res.returncode != 0 and "already mounted" not in res.stderr:
+                    logger.warning(f"Failed to mount {src} at {target}: {res.stderr.strip()}")
+            except Exception as e:
+                logger.warning(f"Failed to mount {src} at {target}: {e}")
 
         # Bind-mount target leaf paths explicitly both to /workdir/<subname> and to matching host absolute paths inside build_host
         # to avoid infinite recursion of build_host inside itself.
@@ -368,11 +365,16 @@ class ToolchainManager:
             target_in_chroot = self.build_host_dir / host_sub.relative_to("/")
             target_in_chroot.mkdir(parents=True, exist_ok=True)
             subprocess.run(["mount", "--bind", str(host_sub), str(target_in_chroot)], capture_output=True)
-        # Mirror output dir at its absolute path inside build_host
+        # Mirror output dir and cache dir at their absolute paths inside build_host
         output_dir.mkdir(parents=True, exist_ok=True)
         output_in_chroot = self.build_host_dir / output_dir.relative_to("/")
         output_in_chroot.mkdir(parents=True, exist_ok=True)
         subprocess.run(["mount", "--bind", str(output_dir), str(output_in_chroot)], capture_output=True)
+
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_in_chroot = self.build_host_dir / self.cache_dir.relative_to("/")
+        cache_in_chroot.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["mount", "--bind", str(self.cache_dir), str(cache_in_chroot)], capture_output=True)
 
         self.is_mounted = True
 
@@ -385,11 +387,13 @@ class ToolchainManager:
 
         logger.info(f"Unmounting virtual filesystems from build_host: {self.build_host_dir}")
 
-        subdirs = ["chroot", "iso_root", "cache"]
+        subdirs = ["chroot", "iso_root"]
         output_dir = _resolve_from_project("output")
 
         # Unmount bind-mounted workdir leaves (reverse order)
-        bind_targets = []
+        bind_targets = [
+            self.build_host_dir / self.cache_dir.relative_to("/")
+        ]
         for sub in subdirs:
             bind_targets.append(self.build_host_dir / (self.workdir_base / sub).relative_to("/"))
         bind_targets.append(self.build_host_dir / output_dir.relative_to("/"))
@@ -402,11 +406,11 @@ class ToolchainManager:
             if target.exists():
                 subprocess.run(["umount", "-l", str(target)], capture_output=True)
 
-        # Recursively unmount rbind pseudo-filesystems (proc/sys/dev and all submounts)
-        for pseudo in ["dev", "sys", "proc"]:
+        # Unmount pseudo-filesystems non-recursively (never use -R as it unmounts host /dev/pts)
+        for pseudo in ["dev/pts", "dev/shm", "dev", "sys", "proc"]:
             target = self.build_host_dir / pseudo
             if target.exists():
-                subprocess.run(["umount", "-R", "-l", str(target)], capture_output=True)
+                subprocess.run(["umount", "-l", "-f", str(target)], capture_output=True)
 
         self.is_mounted = False
 

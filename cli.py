@@ -136,7 +136,7 @@ def main():
     parser.add_argument(
         "--variant",
         type=str,
-        default=None,
+        default="live",
         help="Image variant profile (live, minimal, server, cloud, iot). Default: live",
     )
 
@@ -206,7 +206,7 @@ def main():
         "-k",
         "--kernel",
         type=str,
-        default=None,
+        default="kernel",
         help="Kernel profile (kernel, kernel-lts). Default: kernel",
     )
 
@@ -214,7 +214,7 @@ def main():
         "-b",
         "--bootloader",
         type=str,
-        default=None,
+        default="grub2-hybrid",
         help="Bootloader profile (grub2-hybrid, grub2-efi, grub2-bios). Default: grub2-hybrid",
     )
 
