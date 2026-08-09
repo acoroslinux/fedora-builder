@@ -167,10 +167,14 @@ class DNFManager:
         if res.returncode != 0:
             raise DNFManagerError(f"Bootstrap failed: {res.returncode}")
 
-        # Save rootfs seed tarball for instant future builds
+        # Save rootfs seed tarball for instant future builds (excluding virtual kernel filesystems)
         try:
             logger.info(f"Caching Fedora rootfs seed tarball to {seed_cache}...")
-            subprocess.run(["tar", "cJpf", str(seed_cache), "-C", str(self.target_root), "."], check=False)
+            subprocess.run([
+                "tar", "cJpf", str(seed_cache),
+                "--exclude=./proc/*", "--exclude=./sys/*", "--exclude=./dev/*", "--exclude=./tmp/*", "--exclude=./run/*",
+                "-C", str(self.target_root), "."
+            ], check=False)
         except Exception as e:
             logger.warning(f"Could not save seed tarball cache: {e}")
 
