@@ -136,10 +136,10 @@ class ToolchainManager:
         self.target_arch   = target_arch
         self.releasever    = releasever
 
-        # The isolated Fedora chroot used for running build tools
-        self.build_host_dir = self.workdir_base / "build_host"
+        # The isolated Fedora chroot used for running build tools (sibling to arch workdir, preventing recursive mounts)
+        self.build_host_dir = self.workdir_base.parent / "build_host"
         # Persistent download cache (shared between builds)
-        self.cache_dir = self.workdir_base / "cache"
+        self.cache_dir = self.workdir_base.parent / "cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.is_mounted: bool = False
