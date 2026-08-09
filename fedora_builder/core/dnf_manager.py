@@ -131,7 +131,7 @@ class DNFManager:
         if self.chroot.mode != "mock":
             self._run_dnf(args)
 
-    def bootstrap_rootfs(self, releasever: str, basearch: str):
+    def bootstrap_rootfs(self, releasever: str, basearch: str, use_seed: bool = True):
         if self.chroot.mode == "mock":
             try:
                 self.target_root.mkdir(parents=True, exist_ok=True)
@@ -140,11 +140,23 @@ class DNFManager:
             except PermissionError:
                 logger.debug("Mock rootfs directory creation ignored due to root permissions.")
             return
-        args = [
-            f"--installroot={self.target_root}",
+
+        cache_dir = self.resolve_cache_dir()
+        seed_cache = cache_dir / f"seed-fedora-{releasever}-{basearch}.tar.xz"
+
+        if use_seed and seed_cache.exists():
+            logger.info(f"⚡ Fast-bootstrapping Fedora rootfs from local seed tarball: {seed_cache}")
+            self.target_root.mkdir(parents=True, exist_ok=True)
+            res = subprocess.run(["tar", "xpf", str(seed_cache), "-C", str(self.target_root), "--numeric-owner"])
+            if res.returncode == 0:
+                logger.info("Successfully bootstrapped Fedora rootfs from local seed tarball in seconds!")
+                return
+            else:
+                logger.warning("Local seed tarball extraction failed. Falling back to DNF @core bootstrap.")
+
+        args = self._get_base_dnf_args() + [
             f"--releasever={releasever}",
             f"--forcearch={basearch}",
-            "--use-host-config",
             "--setopt=install_weak_deps=False",
             "--nodocs",
             "-y",
@@ -155,8 +167,20 @@ class DNFManager:
         if res.returncode != 0:
             raise DNFManagerError(f"Bootstrap failed: {res.returncode}")
 
+        # Save rootfs seed tarball for instant future builds
+        try:
+            logger.info(f"Caching Fedora rootfs seed tarball to {seed_cache}...")
+            subprocess.run(["tar", "cJpf", str(seed_cache), "-C", str(self.target_root), "."], check=False)
+        except Exception as e:
+            logger.warning(f"Could not save seed tarball cache: {e}")
+
     def _get_base_dnf_args(self) -> List[str]:
-        args = ["--installroot", str(self.target_root)]
+        cache_dir = self.resolve_cache_dir()
+        args = [
+            f"--installroot={self.target_root}",
+            f"--setopt=cachedir={cache_dir}",
+            "--setopt=keepcache=True",
+        ]
         target_repos = list((self.target_root / "etc" / "yum.repos.d").glob("*.repo")) if (self.target_root / "etc" / "yum.repos.d").exists() else []
         if not target_repos:
             args.append("--use-host-config")
@@ -193,7 +217,8 @@ class DNFManager:
     def clean_cache(self):
         if self.chroot.mode == "mock":
             return
-        self._run_dnf(["--installroot", str(self.target_root), "clean", "all"])
+        args = self._get_base_dnf_args() + ["clean", "dbcache"]
+        self._run_dnf(args)
 
     def configure_selinux(self, mode: str = "permissive"):
         selinux_dir = self.target_root / "etc" / "selinux"
