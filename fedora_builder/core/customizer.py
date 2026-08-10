@@ -632,6 +632,19 @@ class SystemCustomizer:
         self.configure_artwork()
         self.copy_custom_files()
 
+    def configure_system_environment(self):
+        self.configure_system_defaults()
+        self.setup_services()
+        self.configure_selinux()
+        self.configure_anaconda()
+        self.copy_custom_files()
+
+    def configure_environment(self):
+        if self.config.get("live_media", True):
+            self.configure_live_environment()
+        else:
+            self.configure_system_environment()
+
     def configure_artwork(self):
         """Install custom Fedora Modern artwork and set default wallpaper."""
         if self.chroot.mode == "mock":

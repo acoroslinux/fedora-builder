@@ -78,6 +78,20 @@ class TestOrchestratorConstruction:
         orch = make_orchestrator(variant="server")
         assert "anaconda" in orch.package_profiles
 
+    def test_live_variant_dracut_uses_live_modules(self):
+        orch = make_orchestrator(variant="live")
+        orch.config["live_media"] = True
+        cmd = orch._build_dracut_command("1.2.3")
+        assert "--add" in cmd
+        assert "livenet" in cmd
+
+    def test_server_variant_dracut_skips_live_modules(self):
+        orch = make_orchestrator(variant="server")
+        orch.config["live_media"] = False
+        cmd = orch._build_dracut_command("1.2.3")
+        assert "livenet" not in cmd
+        assert "--add" not in cmd
+
 
 # ── test_validate ─────────────────────────────────────────────────────────────────
 

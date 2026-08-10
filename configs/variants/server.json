@@ -3,7 +3,7 @@
   "description": "Headless server environment",
   "packages": [],
   "groups": ["@server-product-environment"],
-  "services_enable": ["sshd", "firewalld", "systemd-networkd", "systemd-resolved"],
+  "services_enable": ["sshd", "firewalld", "NetworkManager"],
   "live_media": false,
   "include_installer": true,
   "installer": "anaconda",

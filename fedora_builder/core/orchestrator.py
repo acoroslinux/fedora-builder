@@ -226,7 +226,6 @@ class BuildOrchestrator:
 
             customizer = SystemCustomizer(chroot, self.config)
             customizer.configure_environment()
-
             if self.mode != "mock":
                 kver = None
                 modules_dir = self.target_root / "lib" / "modules"
