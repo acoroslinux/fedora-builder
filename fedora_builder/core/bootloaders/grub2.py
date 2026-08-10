@@ -19,10 +19,8 @@ class Grub2Bootloader:
         installer = self.config.get("installer")
         if variant == "server" and installer == "anaconda":
             return {
-                "start": "Start Fedora Server Installer",
-                "text": "Start Fedora Server Installer (text mode)",
-                "check": "Test this media & start Fedora Server Installer",
-                "basic": "Start Fedora Server Installer in basic graphics mode",
+                "start": "Start Fedora Server Installer (text mode)",
+                "check": "Test this media & start Fedora Server Installer (text mode)",
             }
         return {
             "start": "Start Fedora Modern",
@@ -38,6 +36,17 @@ class Grub2Bootloader:
             "  background_image /boot/grub2/themes/fedora-modern/fedora-grub-bg.jpg\n"
             "fi\n\n"
         )
+
+    def _use_installer_text_mode(self) -> bool:
+        return self.config.get("variant") == "server" and self.config.get("installer") == "anaconda"
+
+    def _build_live_kernel_params(self, kernel_params: str, extra_params: Optional[list[str]] = None) -> str:
+        parts = [p for p in kernel_params.split() if p and p != "rd.live.image"]
+        tokens = ["rd.live.image"]
+        if extra_params:
+            tokens.extend(extra_params)
+        tokens.extend(parts)
+        return " ".join(tokens)
 
     def _graphics_setup(self, font_candidates=None, video_modules=None) -> str:
         font_candidates = font_candidates or ["/boot/grub2/fonts/unicode.pf2"]
@@ -78,28 +87,26 @@ class Grub2Bootloader:
         cfg += self._graphics_setup()
         cfg += self._background_config()
 
+        start_params = ["inst.text"] if self._use_installer_text_mode() else []
         cfg += f"menuentry '{labels['start']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
-        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
+        cfg += f"\tlinux {kernel_path} {root_param} {self._build_live_kernel_params(kernel_params, start_params)}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
-
-        if "text" in labels:
-            cfg += f"menuentry '{labels['text']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
-            cfg += f"\tlinux {kernel_path} {root_param} rd.live.image inst.text {kernel_params}\n"
-            cfg += f"\tinitrd {initrd_path}\n"
-            cfg += "}\n"
 
         cfg += f"menuentry '{labels['check']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
-        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image rd.live.check {kernel_params}\n"
+        check_params = ["rd.live.check"]
+        if self._use_installer_text_mode():
+            check_params.append("inst.text")
+        cfg += f"\tlinux {kernel_path} {root_param} {self._build_live_kernel_params(kernel_params, check_params)}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
-
-        cfg += "submenu 'Troubleshooting -->' {\n"
-        cfg += f"\tmenuentry '{labels['basic']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
-        cfg += f"\t\tlinux {kernel_path} {root_param} rd.live.image nomodeset {kernel_params}\n"
-        cfg += f"\t\tinitrd {initrd_path}\n"
-        cfg += "\t}\n"
-        cfg += "}\n"
+        if labels.get("basic"):
+            cfg += "submenu 'Troubleshooting -->' {\n"
+            cfg += f"\tmenuentry '{labels['basic']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
+            cfg += f"\t\tlinux {kernel_path} {root_param} rd.live.image nomodeset {kernel_params}\n"
+            cfg += f"\t\tinitrd {initrd_path}\n"
+            cfg += "\t}\n"
+            cfg += "}\n"
 
         return cfg
 
@@ -129,15 +136,11 @@ class Grub2Bootloader:
             "all_video",
         ])
         cfg += self._background_config()
+        start_params = ["inst.text"] if self._use_installer_text_mode() else []
         cfg += f"menuentry '{labels['start']}' {{\n"
-        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
+        cfg += f"\tlinux {kernel_path} {root_param} {self._build_live_kernel_params(kernel_params, start_params)}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
-        if "text" in labels:
-            cfg += f"menuentry '{labels['text']}' {{\n"
-            cfg += f"\tlinux {kernel_path} {root_param} rd.live.image inst.text {kernel_params}\n"
-            cfg += f"\tinitrd {initrd_path}\n"
-            cfg += "}\n"
         return cfg
 
     # -------------------------------------------------------------------------
@@ -152,16 +155,15 @@ class Grub2Bootloader:
         cfg += "label linux\n"
         cfg += f"  menu label {labels['start']}\n"
         cfg += "  kernel /images/pxeboot/vmlinuz\n"
-        cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image {kernel_params}\n"
-        if "text" in labels:
-            cfg += "\nlabel text\n"
-            cfg += f"  menu label {labels['text']}\n"
-            cfg += "  kernel /images/pxeboot/vmlinuz\n"
-            cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image inst.text {kernel_params}\n"
+        start_params = ["inst.text"] if self._use_installer_text_mode() else []
+        cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} {self._build_live_kernel_params(kernel_params, start_params)}\n"
         cfg += "\nlabel check\n"
         cfg += f"  menu label {labels['check']}\n"
         cfg += "  kernel /images/pxeboot/vmlinuz\n"
-        cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image rd.live.check {kernel_params}\n"
+        check_params = ["rd.live.check"]
+        if self._use_installer_text_mode():
+            check_params.append("inst.text")
+        cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} {self._build_live_kernel_params(kernel_params, check_params)}\n"
         return cfg
 
     # -------------------------------------------------------------------------
@@ -189,28 +191,27 @@ class Grub2Bootloader:
         ])
         cfg += self._background_config()
 
+        start_params = ["inst.text"] if self._use_installer_text_mode() else []
         cfg += f"menuentry '{labels['start']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
-        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
+        cfg += f"\tlinux {kernel_path} {root_param} {self._build_live_kernel_params(kernel_params, start_params)}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
-
-        if "text" in labels:
-            cfg += f"menuentry '{labels['text']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
-            cfg += f"\tlinux {kernel_path} {root_param} rd.live.image inst.text {kernel_params}\n"
-            cfg += f"\tinitrd {initrd_path}\n"
-            cfg += "}\n"
 
         cfg += f"menuentry '{labels['check']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
-        cfg += f"\tlinux {kernel_path} {root_param} rd.live.image rd.live.check {kernel_params}\n"
+        check_params = ["rd.live.check"]
+        if self._use_installer_text_mode():
+            check_params.append("inst.text")
+        cfg += f"\tlinux {kernel_path} {root_param} {self._build_live_kernel_params(kernel_params, check_params)}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
 
-        cfg += "submenu 'Troubleshooting -->' {\n"
-        cfg += f"\tmenuentry '{labels['basic']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
-        cfg += f"\t\tlinux {kernel_path} {root_param} rd.live.image nomodeset {kernel_params}\n"
-        cfg += f"\t\tinitrd {initrd_path}\n"
-        cfg += "\t}\n"
-        cfg += "}\n"
+        if labels.get("basic"):
+            cfg += "submenu 'Troubleshooting -->' {\n"
+            cfg += f"\tmenuentry '{labels['basic']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
+            cfg += f"\t\tlinux {kernel_path} {root_param} rd.live.image nomodeset {kernel_params}\n"
+            cfg += f"\t\tinitrd {initrd_path}\n"
+            cfg += "\t}\n"
+            cfg += "}\n"
 
         return cfg
 

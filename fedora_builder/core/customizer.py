@@ -509,7 +509,7 @@ class SystemCustomizer:
         logger.info("Configured Calamares polkit rule")
 
     def configure_anaconda(self):
-        """Configure a graphical-first Anaconda launcher with text fallback."""
+        """Configure a text-mode Anaconda launcher for server installer images."""
         if self.chroot.mode == "mock":
             return
         if self.config.get("installer") != "anaconda":
@@ -523,11 +523,9 @@ class SystemCustomizer:
             "ANACONDA_BIN=\"$(command -v anaconda)\"\n"
             "if grep -qw 'inst.text' /proc/cmdline; then\n"
             "  exec \"$ANACONDA_BIN\" --text\n"
+            "else\n"
+            "  exec \"$ANACONDA_BIN\" --text\n"
             "fi\n"
-            "if \"$ANACONDA_BIN\"; then\n"
-            "  exit 0\n"
-            "fi\n"
-            "exec \"$ANACONDA_BIN\" --text\n"
         )
         launcher_path.chmod(0o755)
 
@@ -535,7 +533,7 @@ class SystemCustomizer:
         service_path.parent.mkdir(parents=True, exist_ok=True)
         service_path.write_text(
             "[Unit]\n"
-            "Description=Launch Anaconda installer\n"
+            "Description=Launch Anaconda text installer\n"
             "Conflicts=getty@tty1.service\n"
             "After=systemd-user-sessions.service\n\n"
             "[Service]\n"
