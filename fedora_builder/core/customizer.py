@@ -482,48 +482,82 @@ class SystemCustomizer:
             f.write(rule_content)
 
     def configure_calamares(self):
-        """Configure Calamares desktop launcher and autostart script if with_calamares is enabled."""
+        """
+        Install Calamares configuration, branding and the desktop-icon autostart
+        script when with_calamares is enabled.
+
+        Files are sourced from configs/custom_files/calamares/ (settings.conf,
+        branding/, modules/) and configs/custom_files/scripts/.
+        The copy_custom_files() step will overlay configs/custom_files/autostart/
+        into /etc/xdg/autostart/ automatically, so only the script itself needs
+        to be placed here.
+        """
         if self.chroot.mode == "mock":
             return
         if not self.config.get("with_calamares", False):
             return
-        
-        script_path = self.target_root / "usr" / "local" / "bin" / "create-install-icon.sh"
-        script_path.parent.mkdir(parents=True, exist_ok=True)
-        script_content = (
-            "#!/bin/bash\n"
-            "for user_home in /home/*; do\n"
-            "    if [ -d \"$user_home\" ]; then\n"
-            "        desktop_dir=\"$user_home/Desktop\"\n"
-            "        mkdir -p \"$desktop_dir\"\n"
-            "        cat << 'EOF' > \"$desktop_dir/install-fedora.desktop\"\n"
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Install Fedora Modern\n"
-            "Comment=Install Fedora Linux to disk\n"
-            "Exec=sudo calamares\n"
-            "Icon=system-software-install\n"
-            "Terminal=false\n"
-            "Categories=System;\n"
-            "EOF\n"
-            "        chmod +x \"$desktop_dir/install-fedora.desktop\"\n"
-            "        chown -R $(basename \"$user_home\"): \"$desktop_dir\"\n"
-            "    fi\n"
-            "done\n"
-        )
-        script_path.write_text(script_content)
-        script_path.chmod(0o755)
 
-        autostart_dir = self.target_root / "etc" / "xdg" / "autostart"
-        autostart_dir.mkdir(parents=True, exist_ok=True)
-        (autostart_dir / "create-install-icon.desktop").write_text(
-            "[Desktop Entry]\n"
-            "Type=Application\n"
-            "Name=Create Install Icon\n"
-            "Exec=/usr/local/bin/create-install-icon.sh\n"
-            "Hidden=false\n"
-            "NoDisplay=false\n"
-            "X-GNOME-Autostart-enabled=true\n"
+        from fedora_builder.core.path_utils import resolve_from_project
+        project_root = resolve_from_project("")
+
+        # ── Calamares config tree (/etc/calamares/) ───────────────────────────
+        src_calamares = project_root / "configs" / "custom_files" / "calamares"
+        dst_calamares = self.target_root / "etc" / "calamares"
+
+        if src_calamares.exists():
+            dst_calamares.mkdir(parents=True, exist_ok=True)
+
+            # settings.conf
+            src_settings = src_calamares / "settings.conf"
+            if src_settings.exists():
+                shutil.copy2(src_settings, dst_calamares / "settings.conf")
+
+            # branding/
+            src_branding = src_calamares / "branding"
+            if src_branding.exists():
+                dst_branding = dst_calamares / "branding"
+                dst_branding.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(src_branding, dst_branding, dirs_exist_ok=True,
+                                symlinks=True, ignore_dangling_symlinks=True)
+
+            # modules/
+            src_modules = src_calamares / "modules"
+            if src_modules.exists():
+                dst_modules = dst_calamares / "modules"
+                dst_modules.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(src_modules, dst_modules, dirs_exist_ok=True,
+                                symlinks=True, ignore_dangling_symlinks=True)
+
+            logger.info(f"Installed Calamares config from {src_calamares} → {dst_calamares}")
+        else:
+            logger.warning("configs/custom_files/calamares/ not found — skipping Calamares config install")
+
+        # ── Desktop-icon autostart script (/usr/local/bin/) ──────────────────
+        src_script = project_root / "configs" / "custom_files" / "scripts" / "add-installer-desktop-icon.sh"
+        if src_script.exists():
+            dst_script = self.target_root / "usr" / "local" / "bin" / "add-installer-desktop-icon.sh"
+            dst_script.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_script, dst_script)
+            dst_script.chmod(0o755)
+
+        # ── Autostart .desktop (/etc/xdg/autostart/) ─────────────────────────
+        src_autostart = project_root / "configs" / "custom_files" / "autostart" / "create-install-icon.desktop"
+        if src_autostart.exists():
+            dst_autostart_dir = self.target_root / "etc" / "xdg" / "autostart"
+            dst_autostart_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_autostart, dst_autostart_dir / "create-install-icon.desktop")
+
+        # ── Polkit rule: allow pkexec calamares without password ──────────────
+        polkit_dir = self.target_root / "etc" / "polkit-1" / "rules.d"
+        polkit_dir.mkdir(parents=True, exist_ok=True)
+        (polkit_dir / "49-calamares.rules").write_text(
+            "/* Allow live user to launch calamares installer via pkexec */\n"
+            "polkit.addRule(function(action, subject) {\n"
+            "    if (action.id === 'org.freedesktop.policykit.exec' &&\n"
+            "        action.lookup('program') === '/usr/bin/calamares') {\n"
+            "        return polkit.Result.YES;\n"
+            "    }\n"
+            "});\n"
         )
 
     def copy_custom_files(self):

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Create Install Icon
+Exec=/usr/local/bin/add-installer-desktop-icon.sh
+Icon=calamares
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: no
+# SPDX-License-Identifier: CC0-1.0
+---
+componentName:   fedora-modern
+
+strings:
+    productName:         "Fedora Modern"
+    shortProductName:    "FedoraModern"
+    version:             "44"
+    shortVersion:        "44"
+    versionedName:       "Fedora Modern 44"
+    shortVersionedName:  "FedoraModern 44"
+    installLabel:        "Install Fedora Modern"
+    productUrl:          "https://github.com/acoroslinux/fedora-builder"
+    supportUrl:          "https://github.com/acoroslinux/fedora-builder"
+    knownIssuesUrl:      "https://github.com/acoroslinux/fedora-builder"
+    releaseNotesUrl:     "https://github.com/acoroslinux/fedora-builder"
+
+images:
+    productLogo:         "logo.png"
+    productIcon:         "logo.png"
+    welcomeImage:        "logo.png"
+
+welcomeStyleCalamares:   false
+welcomeExpandingLogo:   true
+windowExpanding:    normal
+windowSize: 920px,630px
+windowPlacement: center
+
+sidebar: qml,bottom
+navigation: qml,right
+
+slideshow:               "show.qml"
+slideshowAPI:            2
+
+style:
+    SidebarBackground:    "#1A1C1E"
+    SidebarText:          "#8C92AC"
+    SidebarTextCurrent:    "#47A7F5"
+    SidebarBackgroundCurrent: "#24292F"
+    sidebarBackground:    "#1A1C1E"
+    sidebarText:          "#8C92AC"
+    sidebarTextSelect:    "#47A7F5"
+    sidebarTextHighlight: "#9E00FF"
