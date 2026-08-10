@@ -28,8 +28,12 @@ class ISOEngine:
     def _get_iso_label(self) -> str:
         # Support both flat key and nested system.iso_label
         if "iso_label" in self.config:
-            return self.config["iso_label"]
-        return self.config.get("system", {}).get("iso_label", "FEDORA-MODERN")
+            label = self.config["iso_label"]
+        else:
+            label = self.config.get("system", {}).get("iso_label", "FEDORA-MODERN")
+        # ISO 9660 silently uppercases volume labels; keep them consistent so
+        # CDLABEL= in kernel cmdline matches the actual on-disc label dracut finds.
+        return label.upper()
 
     def _get_kernel_params(self) -> str:
         # Support both flat key and nested boot.kernel_params
@@ -37,10 +41,10 @@ class ISOEngine:
             base = self.config["kernel_params"]
         else:
             base = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
-        # Ensure rd.live.image is always present (required for Fedora LiveOS)
-        if "rd.live.image" not in base:
-            base = f"rd.live.image {base}"
-        return base
+        # Ensure rd.live.image is always present (required for Fedora LiveOS).
+        # Strip any existing occurrence first to avoid duplicates.
+        parts = [p for p in base.split() if p != "rd.live.image"]
+        return "rd.live.image " + " ".join(parts)
 
     def _find_kernel_and_initramfs(self) -> Tuple[str, str]:
         boot_dir = self.target_root / "boot"

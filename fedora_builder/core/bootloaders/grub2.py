@@ -247,12 +247,15 @@ class Grub2Bootloader:
         iso_label = self.config.get("system", {}).get("iso_label", "FEDORA-MODERN")
         if "iso_label" in self.config:
             iso_label = self.config["iso_label"]
+        # ISO 9660 uppercases volume labels; keep consistent with the on-disc label.
+        iso_label = iso_label.upper()
 
         kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
         if "kernel_params" in self.config:
             kernel_params = self.config["kernel_params"]
-        if "rd.live.image" not in kernel_params:
-            kernel_params = f"rd.live.image {kernel_params}"
+        # Strip duplicates and ensure rd.live.image is first
+        parts = [p for p in kernel_params.split() if p != "rd.live.image"]
+        kernel_params = "rd.live.image " + " ".join(parts)
 
         # ---- EFI/BOOT/ -------------------------------------------------------
         efi_boot_dir = iso_staging / "EFI" / "BOOT"

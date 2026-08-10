@@ -219,7 +219,19 @@ class BuildOrchestrator:
                     if versions:
                         kver = sorted(versions)[-1]
                 
-                dracut_cmd = ["dracut", "-f", "-N", "--nomdadmconf", "--nolvmconf", "--add", "livenet dmsquash-live dmsquash-live-ntfs convertfs pollcdrom qemu qemu-net"]
+                # Each --add argument must be a separate list element; passing all
+                # modules as one string makes dracut treat them as a single (invalid) name.
+                dracut_cmd = [
+                    "dracut", "-f", "-N",
+                    "--nomdadmconf", "--nolvmconf",
+                    "--add", "livenet",
+                    "--add", "dmsquash-live",
+                    "--add", "dmsquash-live-ntfs",
+                    "--add", "convertfs",
+                    "--add", "pollcdrom",
+                    "--add", "qemu",
+                    "--add", "qemu-net",
+                ]
                 if kver:
                     dracut_cmd.extend(["--kver", kver])
                     logger.info(f"Running Dracut initramfs generation for kernel version {kver}...")
