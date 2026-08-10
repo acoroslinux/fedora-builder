@@ -20,6 +20,7 @@ class Grub2Bootloader:
         if variant == "server" and installer == "anaconda":
             return {
                 "start": "Start Fedora Server Installer",
+                "text": "Start Fedora Server Installer (text mode)",
                 "check": "Test this media & start Fedora Server Installer",
                 "basic": "Start Fedora Server Installer in basic graphics mode",
             }
@@ -82,6 +83,12 @@ class Grub2Bootloader:
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
 
+        if "text" in labels:
+            cfg += f"menuentry '{labels['text']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
+            cfg += f"\tlinux {kernel_path} {root_param} rd.live.image inst.text {kernel_params}\n"
+            cfg += f"\tinitrd {initrd_path}\n"
+            cfg += "}\n"
+
         cfg += f"menuentry '{labels['check']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image rd.live.check {kernel_params}\n"
         cfg += f"\tinitrd {initrd_path}\n"
@@ -126,6 +133,11 @@ class Grub2Bootloader:
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
+        if "text" in labels:
+            cfg += f"menuentry '{labels['text']}' {{\n"
+            cfg += f"\tlinux {kernel_path} {root_param} rd.live.image inst.text {kernel_params}\n"
+            cfg += f"\tinitrd {initrd_path}\n"
+            cfg += "}\n"
         return cfg
 
     # -------------------------------------------------------------------------
@@ -141,6 +153,11 @@ class Grub2Bootloader:
         cfg += f"  menu label {labels['start']}\n"
         cfg += "  kernel /images/pxeboot/vmlinuz\n"
         cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image {kernel_params}\n"
+        if "text" in labels:
+            cfg += "\nlabel text\n"
+            cfg += f"  menu label {labels['text']}\n"
+            cfg += "  kernel /images/pxeboot/vmlinuz\n"
+            cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image inst.text {kernel_params}\n"
         cfg += "\nlabel check\n"
         cfg += f"  menu label {labels['check']}\n"
         cfg += "  kernel /images/pxeboot/vmlinuz\n"
@@ -176,6 +193,12 @@ class Grub2Bootloader:
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
+
+        if "text" in labels:
+            cfg += f"menuentry '{labels['text']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
+            cfg += f"\tlinux {kernel_path} {root_param} rd.live.image inst.text {kernel_params}\n"
+            cfg += f"\tinitrd {initrd_path}\n"
+            cfg += "}\n"
 
         cfg += f"menuentry '{labels['check']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image rd.live.check {kernel_params}\n"

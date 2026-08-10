@@ -98,10 +98,25 @@ class BuildOrchestrator:
             "with_zram": self.with_zram,
         }
 
-    def _build_dracut_command(self, kver: Optional[str] = None) -> List[str]:
+    def _filter_available_dracut_modules(self, modules: List[str], rootfs: Optional[Path] = None) -> List[str]:
+        if rootfs is None:
+            return modules
+        modules_dir = rootfs / "usr" / "lib" / "dracut" / "modules.d"
+        if not modules_dir.exists():
+            return modules
+        available_dirs = [p.name for p in modules_dir.iterdir() if p.is_dir()]
+        selected = []
+        for module in modules:
+            if any(entry.endswith(module) for entry in available_dirs):
+                selected.append(module)
+            else:
+                logger.warning(f"Skipping unavailable dracut module for this build: {module}")
+        return selected
+
+    def _build_dracut_command(self, kver: Optional[str] = None, rootfs: Optional[Path] = None) -> List[str]:
         dracut_cmd = ["dracut", "-f", "-N", "--nomdadmconf", "--nolvmconf"]
-        if self.config.get("live_media", True):
-            for module in [
+        if self.output_format == "iso" or self.config.get("live_media", True):
+            live_modules = [
                 "livenet",
                 "dmsquash-live",
                 "dmsquash-live-ntfs",
@@ -109,7 +124,8 @@ class BuildOrchestrator:
                 "pollcdrom",
                 "qemu",
                 "qemu-net",
-            ]:
+            ]
+            for module in self._filter_available_dracut_modules(live_modules, rootfs=rootfs):
                 dracut_cmd.extend(["--add", module])
         if kver:
             dracut_cmd.extend(["--kver", kver])
@@ -234,7 +250,7 @@ class BuildOrchestrator:
                     if versions:
                         kver = sorted(versions)[-1]
 
-                dracut_cmd = self._build_dracut_command(kver=kver)
+                dracut_cmd = self._build_dracut_command(kver=kver, rootfs=self.target_root)
                 if kver:
                     logger.info(f"Running Dracut initramfs generation for kernel version {kver}...")
                 else:

@@ -1,7 +1,11 @@
 {
   "variant": "server",
   "description": "Headless server environment",
-  "packages": [],
+  "packages": [
+    "dracut-live",
+    "dracut-squash",
+    "livecd-tools"
+  ],
   "groups": ["@server-product-environment"],
   "services_enable": ["sshd", "firewalld", "NetworkManager"],
   "live_media": false,

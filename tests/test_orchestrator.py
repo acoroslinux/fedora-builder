@@ -85,12 +85,30 @@ class TestOrchestratorConstruction:
         assert "--add" in cmd
         assert "livenet" in cmd
 
-    def test_server_variant_dracut_skips_live_modules(self):
+    def test_server_variant_iso_keeps_live_modules_for_iso_boot(self):
         orch = make_orchestrator(variant="server")
+        orch.config["live_media"] = False
+        cmd = orch._build_dracut_command("1.2.3")
+        assert "--add" in cmd
+        assert "livenet" in cmd
+
+    def test_server_variant_non_iso_can_skip_live_modules(self):
+        orch = make_orchestrator(variant="server", output_format="img")
         orch.config["live_media"] = False
         cmd = orch._build_dracut_command("1.2.3")
         assert "livenet" not in cmd
         assert "--add" not in cmd
+
+    def test_dracut_module_filter_skips_missing_modules(self, tmp_path):
+        orch = make_orchestrator()
+        modules_dir = tmp_path / "usr" / "lib" / "dracut" / "modules.d"
+        (modules_dir / "90dmsquash-live").mkdir(parents=True)
+        (modules_dir / "95qemu").mkdir(parents=True)
+        selected = orch._filter_available_dracut_modules(
+            ["livenet", "dmsquash-live", "qemu"],
+            rootfs=tmp_path,
+        )
+        assert selected == ["dmsquash-live", "qemu"]
 
 
 # ── test_validate ─────────────────────────────────────────────────────────────────

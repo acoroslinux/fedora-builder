@@ -28,3 +28,4 @@ def test_configure_anaconda_writes_launcher_and_service(tmp_path):
     assert service.exists()
     assert symlink.is_symlink()
     assert "--text" in launcher.read_text()
+    assert "grep -qw 'inst.text' /proc/cmdline" in launcher.read_text()

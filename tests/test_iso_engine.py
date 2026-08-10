@@ -199,6 +199,8 @@ class TestBuildISOMock:
         eng.build_iso()
         grub_cfg = (eng.iso_staging / "boot" / "grub2" / "grub.cfg").read_text()
         assert "Start Fedora Server Installer" in grub_cfg
+        assert "Start Fedora Server Installer (text mode)" in grub_cfg
+        assert "inst.text" in grub_cfg
 
 
 # ── test_build_tarball_mock ───────────────────────────────────────────────────────
