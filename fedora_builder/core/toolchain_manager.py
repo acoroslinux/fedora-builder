@@ -37,6 +37,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from fedora_builder.core.cache_paths import resolve_cache_root, toolchain_cache_dir
 from fedora_builder.core.logger_setup import setup_logger
 from fedora_builder.core.path_utils import resolve_from_project as _resolve_from_project
 
@@ -129,6 +130,7 @@ class ToolchainManager:
         force_isolated: bool = False,
         target_arch: str = "x86_64",
         releasever: str = "41",
+        cache_root: Optional[Path] = None,
     ):
         self.workdir_base  = Path(workdir_base).resolve()
         self.mode          = mode.lower()
@@ -138,8 +140,10 @@ class ToolchainManager:
 
         # The isolated Fedora chroot used for running build tools (sibling to arch workdir, preventing recursive mounts)
         self.build_host_dir = self.workdir_base.parent / "build_host"
-        # Persistent download cache (shared between builds)
-        self.cache_dir = _resolve_from_project(f"cache/{self.target_arch}")
+        # Persistent download cache, split by release and architecture below one project cache root.
+        self.cache_root = Path(cache_root).resolve() if cache_root else resolve_cache_root()
+        self.cache_dir = toolchain_cache_dir(self.cache_root, self.releasever, self.target_arch)
+        self.cache_root.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.is_mounted: bool = False
@@ -312,6 +316,10 @@ class ToolchainManager:
         if os.geteuid() != 0:
             raise ToolchainManagerError("Root privileges required to mount build_host.")
 
+        if self.is_mounted:
+            logger.info(f"build_host filesystems already mounted at {self.build_host_dir}.")
+            return
+
         logger.info(f"Mounting virtual filesystems into build_host: {self.build_host_dir}")
 
         # Bind-mount /proc, /sys, /dev from the host into build_host.
@@ -341,7 +349,7 @@ class ToolchainManager:
 
         # Bind-mount target leaf paths explicitly both to /workdir/<subname> and to matching host absolute paths inside build_host
         # to avoid infinite recursion of build_host inside itself.
-        subdirs = ["chroot", "iso_root", "cache"]
+        subdirs = ["chroot", "iso_root"]
         output_dir = _resolve_from_project("output")
 
         # 1. Bind-mount to /workdir/<subname> inside build_host
@@ -365,16 +373,17 @@ class ToolchainManager:
             target_in_chroot = self.build_host_dir / host_sub.relative_to("/")
             target_in_chroot.mkdir(parents=True, exist_ok=True)
             subprocess.run(["mount", "--bind", str(host_sub), str(target_in_chroot)], capture_output=True)
-        # Mirror output dir and cache dir at their absolute paths inside build_host
+        # Mirror output dir and cache root at their absolute paths inside build_host.
+        # DNF receives absolute cachedir paths, so the same cache root must exist inside build_host.
         output_dir.mkdir(parents=True, exist_ok=True)
         output_in_chroot = self.build_host_dir / output_dir.relative_to("/")
         output_in_chroot.mkdir(parents=True, exist_ok=True)
         subprocess.run(["mount", "--bind", str(output_dir), str(output_in_chroot)], capture_output=True)
 
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_in_chroot = self.build_host_dir / self.cache_dir.relative_to("/")
+        self.cache_root.mkdir(parents=True, exist_ok=True)
+        cache_in_chroot = self.build_host_dir / self.cache_root.relative_to("/")
         cache_in_chroot.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["mount", "--bind", str(self.cache_dir), str(cache_in_chroot)], capture_output=True)
+        subprocess.run(["mount", "--bind", str(self.cache_root), str(cache_in_chroot)], capture_output=True)
 
         self.is_mounted = True
 
@@ -392,7 +401,7 @@ class ToolchainManager:
 
         # Unmount bind-mounted workdir leaves (reverse order)
         bind_targets = [
-            self.build_host_dir / self.cache_dir.relative_to("/")
+            self.build_host_dir / self.cache_root.relative_to("/")
         ]
         for sub in subdirs:
             bind_targets.append(self.build_host_dir / (self.workdir_base / sub).relative_to("/"))

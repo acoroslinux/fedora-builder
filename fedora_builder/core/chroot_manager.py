@@ -131,7 +131,7 @@ class ChrootManager:
                 logger.warning(f"Failed to mount {src} at {target}: {e}")
 
         if self.cache_dir:
-            dnf_cache_host = self.cache_dir / "dnf"
+            dnf_cache_host = self.cache_dir
             dnf_cache_target = self.target_root / "var" / "cache" / "dnf"
             try:
                 dnf_cache_host.mkdir(parents=True, exist_ok=True)

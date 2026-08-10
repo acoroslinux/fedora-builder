@@ -10,6 +10,7 @@ from fedora_builder.core.customizer import SystemCustomizer
 from fedora_builder.core.iso_engine import ISOEngine
 from fedora_builder.core.kickstart_manager import KickstartManager
 from fedora_builder.core.path_utils import resolve_from_project, unmount_all_under
+from fedora_builder.core.cache_paths import package_cache_dir, resolve_cache_root
 import logging
 
 logger = logging.getLogger("orchestrator")
@@ -167,6 +168,12 @@ class BuildOrchestrator:
             live_profile=self.live_profile,
         )
         self.config.update(assembled_config)
+        cache_root = resolve_cache_root(self.config)
+        dnf_cache_dir = package_cache_dir(
+            self.config,
+            self.config["releasever"],
+            self.config["basearch"],
+        )
 
         toolchain = ToolchainManager(
             workdir_base=self.workdir,
@@ -174,11 +181,17 @@ class BuildOrchestrator:
             force_isolated=self.force_isolated_toolchain,
             target_arch=self.arch,
             releasever=self.config["releasever"],
+            cache_root=cache_root,
         )
         toolchain.setup()
         
-        cache_dir = resolve_from_project(f"cache/{self.arch}")
-        chroot = ChrootManager(self.target_root, self.mode, cache_dir=cache_dir, arch=self.arch)
+        chroot = ChrootManager(
+            self.target_root,
+            self.mode,
+            cache_dir=dnf_cache_dir,
+            arch=self.arch,
+            toolchain=toolchain,
+        )
         
         try:
             toolchain.mount_virtual_fs()

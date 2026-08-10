@@ -4,6 +4,10 @@ from pathlib import Path
 from typing import List, Dict, Any
 import logging
 from fedora_builder.core.chroot_manager import ChrootManager
+from fedora_builder.core.cache_paths import (
+    package_cache_dir,
+    rootfs_seed_cache_path,
+)
 
 logger = logging.getLogger("dnf_manager")
 
@@ -22,12 +26,9 @@ class DNFManager:
         Determine resilient package cache directory with write testing and fallback to /tmp.
         Identical to void-builder's cache resolution strategy.
         """
-        arch = getattr(self.chroot, "arch", "x86_64")
-        cache_path_str = self.config.get("system", {}).get("dnf_cache", f"cache/{arch}/dnf")
-        candidate = Path(cache_path_str)
-        if not candidate.is_absolute():
-            from fedora_builder.core.path_utils import resolve_from_project
-            candidate = resolve_from_project(candidate)
+        releasever = self.config.get("releasever", "rawhide")
+        basearch = self.config.get("basearch", getattr(self.chroot, "arch", "x86_64"))
+        candidate = package_cache_dir(self.config, releasever, basearch)
 
         try:
             candidate.mkdir(parents=True, exist_ok=True)
@@ -37,7 +38,14 @@ class DNFManager:
             return candidate
         except Exception:
             import tempfile
-            fallback = Path(tempfile.gettempdir()) / "fedora-builder-cache" / "dnf" / arch
+            fallback = (
+                Path(tempfile.gettempdir())
+                / "fedora-builder-cache"
+                / "packages"
+                / str(releasever)
+                / str(basearch)
+                / "dnf"
+            )
             fallback.mkdir(parents=True, exist_ok=True)
             logger.info(f"Using fallback cache directory: {fallback}")
             return fallback
@@ -182,7 +190,7 @@ class DNFManager:
         (self.target_root / "var" / "log").mkdir(parents=True, exist_ok=True)
 
         cache_dir = self.resolve_cache_dir()
-        seed_cache = cache_dir.parent / f"seed-fedora-{releasever}-{basearch}.tar.gz"
+        seed_cache = rootfs_seed_cache_path(self.config, releasever, basearch)
 
         if use_seed and seed_cache.exists():
             logger.info(f"⚡ Fast-bootstrapping Fedora rootfs from local seed tarball: {seed_cache}")
@@ -212,6 +220,7 @@ class DNFManager:
 
         # Save rootfs seed tarball for instant future builds (excluding virtual kernel filesystems)
         try:
+            seed_cache.parent.mkdir(parents=True, exist_ok=True)
             logger.info(f"⚡ Fast-caching Fedora rootfs seed tarball to {seed_cache}...")
             subprocess.run([
                 "tar", "czpf", str(seed_cache),

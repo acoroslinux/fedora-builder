@@ -19,7 +19,7 @@
   },
   "system": {
     "workdir_base": "workdir",
-    "dnf_cache": "cache/dnf",
+    "dnf_cache": "cache",
     "iso_label": "fedora-modern",
     "iso_publisher": "AcorOS Linux",
     "iso_preparer": "fedora-builder",

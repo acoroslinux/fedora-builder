@@ -64,6 +64,22 @@ class TestDNFManagerConstruction:
         assert mgr.chroot is tmp_chroot
 
 
+class TestDNFCachePaths:
+    def test_resolve_cache_dir_uses_release_and_arch(self, tmp_chroot, mock_config, tmp_path):
+        mock_config["system"]["dnf_cache"] = str(tmp_path / "cache")
+        mgr = DNFManager(chroot=tmp_chroot, config=mock_config)
+
+        assert mgr.resolve_cache_dir() == tmp_path / "cache" / "packages" / "41" / "x86_64" / "dnf"
+
+    def test_base_dnf_args_use_active_package_cache(self, tmp_chroot, mock_config, tmp_path):
+        mock_config["system"]["dnf_cache"] = str(tmp_path / "cache")
+        mgr = DNFManager(chroot=tmp_chroot, config=mock_config)
+
+        args = mgr._get_base_dnf_args()
+
+        assert f"--setopt=cachedir={tmp_path / 'cache' / 'packages' / '41' / 'x86_64' / 'dnf'}" in args
+
+
 # ── test_configure_dnf_conf ───────────────────────────────────────────────────────
 
 class TestConfigureDnfConf:

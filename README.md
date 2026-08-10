@@ -171,6 +171,21 @@ fedora-builder/
     └── test_iso_engine.py
 ```
 
+### Cache Layout
+
+All persistent build cache lives below the configured `system.dnf_cache` root
+(`cache/` by default):
+
+```
+cache/
+├── packages/<release>/<arch>/dnf/       ← DNF package metadata and RPM cache
+├── rootfs-seeds/<release>/<arch>/       ← reusable bootstrapped rootfs tarballs
+└── toolchain/<release>/<arch>/          ← Fedora minimal OCI/toolchain layers
+```
+
+Older paths such as `cache/dnf`, `cache/<arch>/dnf`, and
+`cache/seed-fedora-*.tar.gz` are legacy cache locations and are no longer used.
+
 ---
 
 ## Fedora LiveOS ISO Structure
