@@ -74,6 +74,10 @@ class TestOrchestratorConstruction:
         orch = make_orchestrator(copr_repos=["arivenitez/calamares"])
         assert "arivenitez/calamares" in orch.copr_repos
 
+    def test_server_variant_adds_anaconda_profile(self):
+        orch = make_orchestrator(variant="server")
+        assert "anaconda" in orch.package_profiles
+
 
 # ── test_validate ─────────────────────────────────────────────────────────────────
 

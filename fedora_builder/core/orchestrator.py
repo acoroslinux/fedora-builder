@@ -75,6 +75,9 @@ class BuildOrchestrator:
         self.with_zram = with_zram
         self.force_isolated_toolchain = force_isolated_toolchain
 
+        if self.variant == "server" and "anaconda" not in self.package_profiles:
+            self.package_profiles.append("anaconda")
+
         if self.with_calamares and "installer" not in self.package_profiles:
             self.package_profiles.append("installer")
 
@@ -86,7 +89,6 @@ class BuildOrchestrator:
             if "multimedia" not in self.package_profiles:
                 self.package_profiles.append("multimedia")
 
-        # Use resolve_from_project to get absolute path regardless of CWD
         self.workdir = resolve_from_project(f"workdir/{self.arch}")
         self.target_root = self.workdir / "chroot"
         self.config = {
@@ -96,8 +98,24 @@ class BuildOrchestrator:
             "with_zram": self.with_zram,
         }
 
+    def _build_dracut_command(self, kver: Optional[str] = None) -> List[str]:
+        dracut_cmd = ["dracut", "-f", "-N", "--nomdadmconf", "--nolvmconf"]
+        if self.config.get("live_media", True):
+            for module in [
+                "livenet",
+                "dmsquash-live",
+                "dmsquash-live-ntfs",
+                "convertfs",
+                "pollcdrom",
+                "qemu",
+                "qemu-net",
+            ]:
+                dracut_cmd.extend(["--add", module])
+        if kver:
+            dracut_cmd.extend(["--kver", kver])
+        return dracut_cmd
+
     def _safe_clean_build_tree(self):
-        # Preventively unmount any stale mountpoints before cleaning
         if self.mode != "mock" and os.geteuid() == 0:
             unmount_all_under(resolve_from_project("workdir"))
 
@@ -118,7 +136,6 @@ class BuildOrchestrator:
         return {"valid": True, "errors": [], "summary": {}}
 
     def generate_kickstart_only(self, output_name: Optional[str] = None) -> Path:
-        """Generate a Kickstart (.ks) file without performing a full build."""
         from fedora_builder.core.config_loader import ConfigLoader
         loader = ConfigLoader()
         config = loader.assemble_build_config(
@@ -151,7 +168,7 @@ class BuildOrchestrator:
 
         if self.clean:
             self._safe_clean_build_tree()
-            
+
         from fedora_builder.core.config_loader import ConfigLoader
         loader = ConfigLoader()
         assembled_config = loader.assemble_build_config(
@@ -184,7 +201,7 @@ class BuildOrchestrator:
             cache_root=cache_root,
         )
         toolchain.setup()
-        
+
         chroot = ChrootManager(
             self.target_root,
             self.mode,
@@ -192,7 +209,7 @@ class BuildOrchestrator:
             arch=self.arch,
             toolchain=toolchain,
         )
-        
+
         try:
             toolchain.mount_virtual_fs()
             chroot.mount_virtual_fs()
@@ -200,59 +217,44 @@ class BuildOrchestrator:
             dnf = DNFManager(chroot, self.config, toolchain=toolchain)
             dnf.bootstrap_rootfs(self.config["releasever"], self.config["basearch"])
             dnf.configure_repos(self.config.get("repos", []))
-            
+
             packages = self.config.get("packages", [])
             groups = self.config.get("groups", [])
             dnf.install_all(packages, groups)
-            
+
             dnf.configure_selinux(self.config.get("selinux_mode", "permissive"))
-            
+
             customizer = SystemCustomizer(chroot, self.config)
-            customizer.configure_live_environment()
-            
+            customizer.configure_environment()
+
             if self.mode != "mock":
-                # Find installed kernel version inside target chroot /lib/modules/
                 kver = None
                 modules_dir = self.target_root / "lib" / "modules"
                 if modules_dir.exists():
                     versions = [d.name for d in modules_dir.iterdir() if d.is_dir()]
                     if versions:
                         kver = sorted(versions)[-1]
-                
-                # Each --add argument must be a separate list element; passing all
-                # modules as one string makes dracut treat them as a single (invalid) name.
-                dracut_cmd = [
-                    "dracut", "-f", "-N",
-                    "--nomdadmconf", "--nolvmconf",
-                    "--add", "livenet",
-                    "--add", "dmsquash-live",
-                    "--add", "dmsquash-live-ntfs",
-                    "--add", "convertfs",
-                    "--add", "pollcdrom",
-                    "--add", "qemu",
-                    "--add", "qemu-net",
-                ]
+
+                dracut_cmd = self._build_dracut_command(kver=kver)
                 if kver:
-                    dracut_cmd.extend(["--kver", kver])
                     logger.info(f"Running Dracut initramfs generation for kernel version {kver}...")
                 else:
                     logger.info("Running Dracut initramfs generation...")
                 chroot.run_in_chroot(dracut_cmd)
-                
+
             if self.generate_kickstart:
                 ks_mgr = KickstartManager(self.config)
                 ks_path = Path("output") / f"fedora-{self.arch}.ks"
                 ks_path.parent.mkdir(parents=True, exist_ok=True)
                 ks_mgr.write(ks_path)
-                
-            # Unmount target rootfs virtual filesystems (proc, sys, dev, cache) before squashfs compression
+
             chroot.umount_virtual_fs()
 
             iso_engine = ISOEngine(
-                self.workdir, self.target_root, artifact_name, 
+                self.workdir, self.target_root, artifact_name,
                 self.config, self.mode, toolchain
             )
-            
+
             if self.output_format == "iso":
                 artifact = iso_engine.build_iso()
             elif self.output_format == "img":
@@ -287,7 +289,6 @@ class BuildOrchestrator:
             self._fix_output_permissions(output_dir)
 
     def _fix_output_permissions(self, output_dir: Path):
-        """Fix ownership of output directory and built ISOs from root to SUDO_USER if invoked via sudo."""
         if not output_dir.exists():
             return
         sudo_uid = os.environ.get("SUDO_UID")
@@ -313,7 +314,6 @@ class BuildOrchestrator:
                 logger.warning(f"Could not update output ownership: {e}")
 
     def _generate_checksums(self, artifact_path: Path):
-        """Generate SHA256 and MD5 checksum files next to the built artifact."""
         if not artifact_path or not artifact_path.exists():
             return
         import hashlib

@@ -155,6 +155,7 @@ class TestAssembleBuildConfig:
             desktop="gnome",
         )
         assert isinstance(config, dict)
+        assert "gdm" in config["services"]["enable"]
 
     def test_assembly_includes_desktop_kde(self, loader, global_config_path):
         config = loader.assemble_build_config(
@@ -189,6 +190,19 @@ class TestAssembleBuildConfig:
             package_profiles=["audio", "bluetooth"],
         )
         assert isinstance(config["packages"], list)
+        assert isinstance(config["copy_files"], list)
+
+    def test_assembly_includes_base_copy_files(self, loader, global_config_path):
+        config = loader.assemble_build_config(
+            global_config_path=global_config_path,
+            architecture="x86_64",
+            release="fedora-41",
+        )
+        assert any(
+            entry.get("destination") == "/boot/grub2/themes/fedora-modern"
+            for entry in config["copy_files"]
+            if isinstance(entry, dict)
+        )
 
     def test_assembly_with_repo_profiles(self, loader, global_config_path):
         config = loader.assemble_build_config(
@@ -277,7 +291,7 @@ class TestAvailableProfiles:
 
     def test_package_profiles_exist(self, config_root):
         required = [
-            "base", "audio", "bluetooth", "browsers", "chat", "cloud-tools",
+            "anaconda", "base", "audio", "bluetooth", "browsers", "chat", "cloud-tools",
             "desktop-apps", "dev-tools", "development", "filesystems", "gaming",
             "graphics", "ide", "multimedia", "multimedia-editing", "network-shares",
             "network-tools", "networking", "office", "printing", "productivity",

@@ -36,6 +36,9 @@ def rootfs(tmp_path) -> Path:
     # Fake kernel and initramfs
     (root / "boot" / "vmlinuz-6.11.0-1.fc41.x86_64").write_bytes(b"\x00" * 64)
     (root / "boot" / "initramfs-6.11.0-1.fc41.x86_64.img").write_bytes(b"\x00" * 64)
+    theme_dir = root / "boot" / "grub2" / "themes" / "fedora-modern"
+    theme_dir.mkdir(parents=True, exist_ok=True)
+    (theme_dir / "fedora-grub-bg.jpg").write_bytes(b"\x00" * 64)
 
     # Fake EFI shim and grub binaries
     efi_boot = root / "boot" / "efi" / "EFI" / "fedora"
@@ -173,6 +176,29 @@ class TestBuildISOMock:
         eng = ISOEngine(workdir, rootfs, "custom-build", config, "mock", toolchain)
         result = eng.build_iso()
         assert isinstance(result, Path)
+
+    def test_build_iso_stages_grub_theme_assets(self, engine):
+        engine.build_iso()
+        assert (engine.iso_staging / "boot" / "grub2" / "themes" / "fedora-modern" / "fedora-grub-bg.jpg").exists()
+
+    def test_build_iso_grub_cfg_references_background(self, engine):
+        engine.build_iso()
+        grub_cfg = (engine.iso_staging / "boot" / "grub2" / "grub.cfg").read_text()
+        assert "background_image /boot/grub2/themes/fedora-modern/fedora-grub-bg.jpg" in grub_cfg
+
+    def test_server_variant_uses_installer_boot_labels(self, workdir, rootfs, toolchain):
+        config = {
+            "variant": "server",
+            "installer": "anaconda",
+            "system": {"iso_label": "FEDORA-SERVER"},
+            "boot": {"kernel_params": "quiet"},
+            "compression": "zstd",
+            "generate_manifest": False,
+        }
+        eng = ISOEngine(workdir, rootfs, "server-build", config, "mock", toolchain)
+        eng.build_iso()
+        grub_cfg = (eng.iso_staging / "boot" / "grub2" / "grub.cfg").read_text()
+        assert "Start Fedora Server Installer" in grub_cfg
 
 
 # ── test_build_tarball_mock ───────────────────────────────────────────────────────

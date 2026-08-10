@@ -17,6 +17,10 @@
       "destination": "/usr/share/grub/themes/modern"
     },
     {
+      "source": "boot/grub2/themes/fedora-modern",
+      "destination": "/boot/grub2/themes/fedora-modern"
+    },
+    {
       "source": "samba",
       "destination": "/etc/samba"
     },
@@ -30,4 +34,3 @@
     }
   ]
 }
-

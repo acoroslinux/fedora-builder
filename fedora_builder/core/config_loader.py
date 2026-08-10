@@ -3,9 +3,11 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from fedora_builder.core.path_utils import resolve_from_project
 
+
 class ConfigLoaderError(Exception):
     """Exception raised for configuration loading errors."""
     pass
+
 
 class ConfigLoader:
     def __init__(self, config_root: Optional[Path] = None):
@@ -15,7 +17,7 @@ class ConfigLoader:
         if not path.exists():
             raise ConfigLoaderError(f"Configuration file not found: {path}")
         try:
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 return json.load(f)
         except json.JSONDecodeError as e:
             raise ConfigLoaderError(f"Invalid JSON in {path}: {e}")
@@ -35,7 +37,6 @@ class ConfigLoader:
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = self._merge_dicts(result[key], value)
             elif key in result and isinstance(result[key], list) and isinstance(value, list):
-                # Build a new list to avoid mutating the original base list
                 existing = list(result[key])
                 extras = [item for item in value if item not in existing]
                 result[key] = existing + extras
@@ -43,24 +44,26 @@ class ConfigLoader:
                 result[key] = value
         return result
 
-    def assemble_build_config(self, 
-                              global_config_path: Path, 
-                              architecture: str, 
-                              release: str,
-                              desktop: Optional[str] = None, 
-                              kernel: Optional[str] = None, 
-                              bootloader: Optional[str] = None, 
-                              variant: Optional[str] = None,
-                              package_profiles: Optional[List[str]] = None,
-                              service_profiles: Optional[List[str]] = None,
-                              repo_profiles: Optional[List[str]] = None,
-                              live_profile: Optional[str] = None) -> Dict[str, Any]:
-        
-        # Initialize default config structure
+    def assemble_build_config(
+        self,
+        global_config_path: Path,
+        architecture: str,
+        release: str,
+        desktop: Optional[str] = None,
+        kernel: Optional[str] = None,
+        bootloader: Optional[str] = None,
+        variant: Optional[str] = None,
+        package_profiles: Optional[List[str]] = None,
+        service_profiles: Optional[List[str]] = None,
+        repo_profiles: Optional[List[str]] = None,
+        live_profile: Optional[str] = None,
+    ) -> Dict[str, Any]:
+
         config = {
             "packages": [],
             "groups": [],
             "services": {"enable": [], "disable": []},
+            "copy_files": [],
             "repos": [],
             "kernel_packages": [],
             "bootloader": {},
@@ -70,32 +73,24 @@ class ConfigLoader:
             "system": {},
             "boot": {},
             "variant_info": {},
-            "copy_files": [],
         }
 
-        # 1. Load global build config
         if global_config_path.exists():
             config = self._merge_dicts(config, self.load_json(global_config_path))
 
-        # 2. Load base_customizations.json and promote base_copy_files → copy_files
-        base_custom_path = global_config_path.parent / "base_customizations.json"
-        if base_custom_path.exists():
-            base_custom = self.load_json(base_custom_path)
-            for entry in base_custom.get("base_copy_files", []):
-                if entry not in config["copy_files"]:
+        base_customizations_path = self.config_root / "base_customizations.json"
+        if base_customizations_path.exists():
+            base_customizations = self.load_json(base_customizations_path)
+            for entry in base_customizations.get("base_copy_files", []):
+                if isinstance(entry, dict) and entry not in config["copy_files"]:
                     config["copy_files"].append(entry)
 
-        # 3. Release
         config = self._merge_dicts(config, self.load_profile("releases", release))
-
-        # 4. Architecture
         config = self._merge_dicts(config, self.load_profile("architectures", architecture))
 
-        # 5. Variant
         if variant:
             config = self._merge_dicts(config, self.load_profile("variants", variant))
 
-        # 6. Desktop — also extract desktop_environment.copy_files into top-level copy_files
         if desktop:
             desktop_data = self.load_profile("desktops", desktop)
             config = self._merge_dicts(config, desktop_data)
@@ -103,18 +98,14 @@ class ConfigLoader:
                 if entry not in config["copy_files"]:
                     config["copy_files"].append(entry)
 
-        # 7. Kernel
         if kernel:
             config = self._merge_dicts(config, self.load_profile("kernels", kernel))
 
-        # 8. Bootloader
         if bootloader:
             config = self._merge_dicts(config, self.load_profile("bootloaders", bootloader))
 
-        # 9. Base packages
         config = self._merge_dicts(config, self.load_profile("packages", "base"))
 
-        # 10. Package profiles — also extract copy_files from each profile
         if package_profiles:
             for profile in package_profiles:
                 profile_data = self.load_profile("packages", profile)
@@ -123,42 +114,58 @@ class ConfigLoader:
                     if entry not in config["copy_files"]:
                         config["copy_files"].append(entry)
 
-        # 11. Service profiles
         if service_profiles:
             for profile in service_profiles:
-                config = self._merge_dicts(config, self.load_profile("services", profile))
+                service_profile = self.load_profile("services", profile)
+                service_enable = service_profile.pop("enable", [])
+                service_disable = service_profile.pop("disable", [])
+                if isinstance(service_enable, list) or isinstance(service_disable, list):
+                    nested_services = service_profile.get("services", {})
+                    if not isinstance(nested_services, dict):
+                        nested_services = {"enable": [], "disable": []}
+                    nested_services = self._merge_dicts(
+                        {"enable": [], "disable": []},
+                        nested_services,
+                    )
+                    if isinstance(service_enable, list):
+                        nested_services["enable"] = nested_services.get("enable", []) + service_enable
+                    if isinstance(service_disable, list):
+                        nested_services["disable"] = nested_services.get("disable", []) + service_disable
+                    service_profile["services"] = nested_services
+                config = self._merge_dicts(config, service_profile)
 
-        # 12. Repo profiles
         if repo_profiles:
             for profile in repo_profiles:
                 config = self._merge_dicts(config, self.load_profile("repos", profile))
 
-        # 13. Live User profile
         if live_profile:
-            config["live_user"] = self._merge_dicts(config.get("live_user", {}), self.load_profile("live-users", live_profile))
+            config["live_user"] = self._merge_dicts(
+                config.get("live_user", {}),
+                self.load_profile("live-users", live_profile),
+            )
 
-        # 13. Promote flat services_enable / services_disable keys (used in desktop
-        #     and variant profiles) into the canonical services.{enable,disable} structure.
-        # Also normalise config["services"] if it was merged as a flat list.
-        if "services" in config and isinstance(config["services"], list):
-            config["services"] = {"enable": config["services"], "disable": []}
         if not isinstance(config.get("services"), dict):
             config["services"] = {"enable": [], "disable": []}
-        for flat_key, state in [("services_enable", "enable"), ("services_disable", "disable")]:
-            if flat_key in config and isinstance(config[flat_key], list):
-                existing = config["services"].setdefault(state, [])
-                for svc in config.pop(flat_key):
-                    if svc not in existing:
-                        existing.append(svc)
 
-        # 14. Deduplicate lists
-        for key in ["packages", "groups", "repos", "kernel_packages"]:
+        for legacy_key, target_key in (("services_enable", "enable"), ("services_disable", "disable")):
+            legacy_services = config.pop(legacy_key, [])
+            if isinstance(legacy_services, list):
+                config["services"][target_key] = config["services"].get(target_key, []) + legacy_services
+
+        for key in ["packages", "groups", "repos", "kernel_packages", "copy_files"]:
             if key in config and isinstance(config[key], list):
-                config[key] = list(dict.fromkeys(config[key]))
-                
+                if key == "copy_files":
+                    deduped = []
+                    for entry in config[key]:
+                        if entry not in deduped:
+                            deduped.append(entry)
+                    config[key] = deduped
+                else:
+                    config[key] = list(dict.fromkeys(config[key]))
+
         if "services" in config:
             for state in ["enable", "disable"]:
                 if state in config["services"] and isinstance(config["services"][state], list):
                     config["services"][state] = list(dict.fromkeys(config["services"][state]))
-                    
+
         return config

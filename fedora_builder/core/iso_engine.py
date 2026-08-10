@@ -300,6 +300,7 @@ class ISOEngine:
             self.iso_staging / "boot" / "grub2" / "loopback.cfg",
             grub.generate_loopback_cfg(kernel, initramfs, iso_label, kernel_params)
         )
+        grub.prepare_files(self.iso_staging, self.target_root)
 
         # ---- GRUB2 BIOS modules (i386-pc) -----------------------------------
         grub._copy_grub_bios_modules(self.iso_staging, self.target_root)

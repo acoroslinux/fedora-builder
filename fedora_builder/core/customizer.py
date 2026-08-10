@@ -508,6 +508,51 @@ class SystemCustomizer:
         )
         logger.info("Configured Calamares polkit rule")
 
+    def configure_anaconda(self):
+        """Configure a text-mode Anaconda launcher for server installer images."""
+        if self.chroot.mode == "mock":
+            return
+        if self.config.get("installer") != "anaconda":
+            return
+
+        launcher_path = self.target_root / "usr" / "local" / "sbin" / "start-anaconda-server-installer.sh"
+        launcher_path.parent.mkdir(parents=True, exist_ok=True)
+        launcher_path.write_text(
+            "#!/bin/bash\n"
+            "set -euo pipefail\n"
+            "ANACONDA_BIN=\"$(command -v anaconda)\"\n"
+            "exec \"$ANACONDA_BIN\" --text\n"
+        )
+        launcher_path.chmod(0o755)
+
+        service_path = self.target_root / "etc" / "systemd" / "system" / "anaconda-launch.service"
+        service_path.parent.mkdir(parents=True, exist_ok=True)
+        service_path.write_text(
+            "[Unit]\n"
+            "Description=Launch Anaconda text installer\n"
+            "Conflicts=getty@tty1.service\n"
+            "After=systemd-user-sessions.service\n\n"
+            "[Service]\n"
+            "Type=simple\n"
+            "ExecStart=/usr/local/sbin/start-anaconda-server-installer.sh\n"
+            "StandardInput=tty\n"
+            "StandardOutput=tty\n"
+            "StandardError=tty\n"
+            "TTYPath=/dev/tty1\n"
+            "TTYReset=yes\n"
+            "TTYVHangup=yes\n"
+            "TTYVTDisallocate=yes\n\n"
+            "[Install]\n"
+            "WantedBy=multi-user.target\n"
+        )
+
+        wants_dir = self.target_root / "etc" / "systemd" / "system" / "multi-user.target.wants"
+        wants_dir.mkdir(parents=True, exist_ok=True)
+        service_link = wants_dir / "anaconda-launch.service"
+        if service_link.exists() or service_link.is_symlink():
+            service_link.unlink()
+        service_link.symlink_to(Path("../anaconda-launch.service"))
+
     def copy_custom_files(self):
         """
         Copy custom files into the target rootfs using the unified copy_files list
@@ -583,6 +628,7 @@ class SystemCustomizer:
         self.configure_flathub()
         self.configure_polkit_power()
         self.configure_calamares()
+        self.configure_anaconda()
         self.configure_artwork()
         self.copy_custom_files()
 

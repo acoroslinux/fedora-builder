@@ -14,6 +14,53 @@ class Grub2Bootloader:
         self.iso_uuid = iso_uuid
         self.toolchain = toolchain
 
+    def _menu_labels(self) -> Dict[str, str]:
+        variant = self.config.get("variant")
+        installer = self.config.get("installer")
+        if variant == "server" and installer == "anaconda":
+            return {
+                "start": "Start Fedora Server Installer",
+                "check": "Test this media & start Fedora Server Installer",
+                "basic": "Start Fedora Server Installer in basic graphics mode",
+            }
+        return {
+            "start": "Start Fedora Modern",
+            "check": "Test this media & start Fedora Modern",
+            "basic": "Start Fedora Modern in basic graphics mode",
+        }
+
+    def _background_config(self) -> str:
+        return (
+            "insmod png\n"
+            "insmod jpeg\n"
+            "if [ -f /boot/grub2/themes/fedora-modern/fedora-grub-bg.jpg ]; then\n"
+            "  background_image /boot/grub2/themes/fedora-modern/fedora-grub-bg.jpg\n"
+            "fi\n\n"
+        )
+
+    def _graphics_setup(self, font_candidates=None, video_modules=None) -> str:
+        font_candidates = font_candidates or ["/boot/grub2/fonts/unicode.pf2"]
+        video_modules = video_modules or [
+            "all_video",
+            "vbe",
+            "vga",
+            "video_bochs",
+            "video_cirrus",
+        ]
+        cfg  = "function load_video {\n"
+        for module in video_modules:
+            cfg += f"  insmod {module}\n"
+        cfg += "}\n\n"
+        cfg += "load_video\n"
+        cfg += "insmod gfxterm\n"
+        cfg += "set gfxmode=auto\n"
+        for font_path in font_candidates:
+            cfg += f"if [ -f {font_path} ]; then\n"
+            cfg += f"  loadfont {font_path}\n"
+            cfg += "fi\n"
+        cfg += "terminal_output gfxterm\n\n"
+        return cfg
+
     # -------------------------------------------------------------------------
     # grub.cfg for BIOS boot  (boot/grub2/grub.cfg)
     # -------------------------------------------------------------------------
@@ -22,23 +69,26 @@ class Grub2Bootloader:
         root_param = f"root=live:CDLABEL={iso_label}"
         kernel_path = "/images/pxeboot/vmlinuz"
         initrd_path = "/images/pxeboot/initrd.img"
+        labels = self._menu_labels()
 
         cfg  = "set default=0\n"
         cfg += "set timeout=5\n\n"
         cfg += f"search --no-floppy --set=root -l '{iso_label}'\n\n"
+        cfg += self._graphics_setup()
+        cfg += self._background_config()
 
-        cfg += f"menuentry 'Start Fedora Modern' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"menuentry '{labels['start']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
 
-        cfg += f"menuentry 'Test this media & start Fedora Modern' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"menuentry '{labels['check']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image rd.live.check {kernel_params}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
 
         cfg += "submenu 'Troubleshooting -->' {\n"
-        cfg += f"\tmenuentry 'Start Fedora Modern in basic graphics mode' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"\tmenuentry '{labels['basic']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
         cfg += f"\t\tlinux {kernel_path} {root_param} rd.live.image nomodeset {kernel_params}\n"
         cfg += f"\t\tinitrd {initrd_path}\n"
         cfg += "\t}\n"
@@ -60,13 +110,19 @@ class Grub2Bootloader:
         root_param = f"root=live:CDLABEL={iso_label}"
         kernel_path = "/images/pxeboot/vmlinuz"
         initrd_path = "/images/pxeboot/initrd.img"
+        labels = self._menu_labels()
 
-        cfg  = "function load_video {\n"
-        cfg += "  insmod efi_gop\n  insmod efi_uga\n  insmod video_bochs\n"
-        cfg += "  insmod video_cirrus\n  insmod all_video\n}\n\n"
-        cfg += "load_video\nset gfxpayload=keep\ninsmod gzio\ninsmod part_gpt\ninsmod ext2\n\n"
+        cfg  = "set gfxpayload=keep\ninsmod gzio\ninsmod part_gpt\ninsmod ext2\n\n"
         cfg += f"search --no-floppy --set=root -l '{iso_label}'\n\n"
-        cfg += f"menuentry 'Start Fedora Modern' {{\n"
+        cfg += self._graphics_setup(video_modules=[
+            "efi_gop",
+            "efi_uga",
+            "video_bochs",
+            "video_cirrus",
+            "all_video",
+        ])
+        cfg += self._background_config()
+        cfg += f"menuentry '{labels['start']}' {{\n"
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
@@ -78,14 +134,15 @@ class Grub2Bootloader:
     def generate_isolinux_cfg(self, kernel_name: str, initramfs_name: str,
                                iso_label: str, kernel_params: str) -> str:
         root_param = f"root=live:CDLABEL={iso_label}"
+        labels = self._menu_labels()
         cfg  = "default vesamenu.c32\n"
         cfg += "timeout 50\n\n"
         cfg += "label linux\n"
-        cfg += "  menu label Start Fedora Modern\n"
+        cfg += f"  menu label {labels['start']}\n"
         cfg += "  kernel /images/pxeboot/vmlinuz\n"
         cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image {kernel_params}\n"
         cfg += "\nlabel check\n"
-        cfg += "  menu label Test this media & start Fedora Modern\n"
+        cfg += f"  menu label {labels['check']}\n"
         cfg += "  kernel /images/pxeboot/vmlinuz\n"
         cfg += f"  append initrd=/images/pxeboot/initrd.img {root_param} rd.live.image rd.live.check {kernel_params}\n"
         return cfg
@@ -97,27 +154,36 @@ class Grub2Bootloader:
         root_param = f"root=live:CDLABEL={iso_label}"
         kernel_path = "/images/pxeboot/vmlinuz"
         initrd_path = "/images/pxeboot/initrd.img"
+        labels = self._menu_labels()
 
-        cfg  = "function load_video {\n"
-        cfg += "  insmod efi_gop\n  insmod efi_uga\n  insmod video_bochs\n"
-        cfg += "  insmod video_cirrus\n  insmod all_video\n}\n\n"
-        cfg += "load_video\nset gfxpayload=keep\n"
+        cfg  = "set gfxpayload=keep\n"
         cfg += "insmod gzio\ninsmod part_gpt\ninsmod ext2\n\n"
         cfg += f"set timeout=60\n\n"
         cfg += f"search --no-floppy --set=root -l '{iso_label}'\n\n"
+        cfg += self._graphics_setup([
+            "/EFI/BOOT/fonts/unicode.pf2",
+            "/boot/grub2/fonts/unicode.pf2",
+        ], video_modules=[
+            "efi_gop",
+            "efi_uga",
+            "video_bochs",
+            "video_cirrus",
+            "all_video",
+        ])
+        cfg += self._background_config()
 
-        cfg += f"menuentry 'Start Fedora Modern' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"menuentry '{labels['start']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image {kernel_params}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
 
-        cfg += f"menuentry 'Test this media & start Fedora Modern' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"menuentry '{labels['check']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
         cfg += f"\tlinux {kernel_path} {root_param} rd.live.image rd.live.check {kernel_params}\n"
         cfg += f"\tinitrd {initrd_path}\n"
         cfg += "}\n"
 
         cfg += "submenu 'Troubleshooting -->' {\n"
-        cfg += f"\tmenuentry 'Start Fedora Modern in basic graphics mode' --class fedora --class gnu-linux --class gnu --class os {{\n"
+        cfg += f"\tmenuentry '{labels['basic']}' --class fedora --class gnu-linux --class gnu --class os {{\n"
         cfg += f"\t\tlinux {kernel_path} {root_param} rd.live.image nomodeset {kernel_params}\n"
         cfg += f"\t\tinitrd {initrd_path}\n"
         cfg += "\t}\n"
@@ -369,3 +435,7 @@ class Grub2Bootloader:
     def prepare_files(self, iso_staging: Path, rootfs: Path):
         boot_dir = iso_staging / "boot" / "grub2"
         boot_dir.mkdir(parents=True, exist_ok=True)
+        theme_src = rootfs / "boot" / "grub2" / "themes"
+        theme_dst = boot_dir / "themes"
+        if theme_src.exists():
+            shutil.copytree(theme_src, theme_dst, dirs_exist_ok=True)

@@ -6,6 +6,7 @@
   "services_enable": ["sshd", "firewalld", "systemd-networkd", "systemd-resolved"],
   "live_media": false,
   "include_installer": true,
+  "installer": "anaconda",
   "squashfs_root": false,
   "boot_params": "quiet"
 }
