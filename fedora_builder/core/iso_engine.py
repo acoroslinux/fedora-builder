@@ -128,7 +128,24 @@ class ISOEngine:
         if self.mode == "mock":
             return
         import hashlib
-        # Generate SHA256 and MD5 checksums using Python (no host tools needed)
+
+        # Embed MD5 checksum inside the ISO using implantisomd5 so that
+        # dracut's rd.live.check (media verification) works at boot time.
+        # Without this the boot halts with "No checksum information available".
+        try:
+            self.toolchain.run_in_build_host(
+                ["implantisomd5", str(iso_file)],
+                check=True,
+            )
+            logger.info(f"Implanted ISO MD5 checksum into {iso_file.name}")
+        except Exception as e:
+            logger.warning(
+                f"implantisomd5 not available ({e}). "
+                "rd.live.check media verification will be disabled in grub menus."
+            )
+
+        # Generate external SHA256 and MD5 sidecar files for users to verify
+        # the download integrity independently.
         sha256 = hashlib.sha256()
         md5    = hashlib.md5()
         with open(iso_file, "rb") as f:

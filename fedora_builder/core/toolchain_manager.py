@@ -86,6 +86,8 @@ _BUILD_HOST_PACKAGES = [
     "coreutils",
     "bash",
     "shadow-utils",
+    # ISO media verification (for implantisomd5 / checkisomd5)
+    "isomd5sum",
 ]
 
 # Architecture-specific extra packages for build_host
