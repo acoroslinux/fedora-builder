@@ -5,7 +5,12 @@
     "rtkit-daemon",
     "udisks2",
     "colord",
-    "acpid",
-    "thermald"
+    "acpid"
+  ],
+  "disable": [
+    "thermald",
+    "fwupd",
+    "pcscd"
   ]
 }
+

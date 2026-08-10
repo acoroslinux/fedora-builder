@@ -119,8 +119,22 @@ class ConfigLoader:
         # 12. Live User profile
         if live_profile:
             config["live_user"] = self._merge_dicts(config.get("live_user", {}), self.load_profile("live-users", live_profile))
-            
-        # 13. Deduplicate lists
+
+        # 13. Promote flat services_enable / services_disable keys (used in desktop
+        #     and variant profiles) into the canonical services.{enable,disable} structure.
+        # Also normalise config["services"] if it was merged as a flat list.
+        if "services" in config and isinstance(config["services"], list):
+            config["services"] = {"enable": config["services"], "disable": []}
+        if not isinstance(config.get("services"), dict):
+            config["services"] = {"enable": [], "disable": []}
+        for flat_key, state in [("services_enable", "enable"), ("services_disable", "disable")]:
+            if flat_key in config and isinstance(config[flat_key], list):
+                existing = config["services"].setdefault(state, [])
+                for svc in config.pop(flat_key):
+                    if svc not in existing:
+                        existing.append(svc)
+
+        # 14. Deduplicate lists
         for key in ["packages", "groups", "repos", "kernel_packages"]:
             if key in config and isinstance(config[key], list):
                 config[key] = list(dict.fromkeys(config[key]))

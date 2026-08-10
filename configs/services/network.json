@@ -1,7 +1,9 @@
 {
   "enable": [
     "NetworkManager",
-    "NetworkManager-wait-online",
     "systemd-resolved"
+  ],
+  "disable": [
+    "NetworkManager-wait-online"
   ]
 }

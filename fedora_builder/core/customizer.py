@@ -49,10 +49,23 @@ class SystemCustomizer:
             return
         services = self.config.get("services", [])
         if isinstance(services, dict):
-            services = services.get("enable", [])
-        for svc in services:
+            enable = services.get("enable", [])
+            disable = services.get("disable", [])
+        elif isinstance(services, list):
+            enable = services
+            disable = []
+        else:
+            return
+
+        for svc in enable:
             try:
                 self.chroot.run_in_chroot(["systemctl", "enable", str(svc)], check=False)
+            except Exception:
+                pass
+
+        for svc in disable:
+            try:
+                self.chroot.run_in_chroot(["systemctl", "disable", "--now", str(svc)], check=False)
             except Exception:
                 pass
 
@@ -62,15 +75,166 @@ class SystemCustomizer:
         dm = self.config.get("display_manager")
         if not dm:
             return
-            
+
         live_user = self.config.get("live_user", "liveuser")
         if isinstance(live_user, dict):
             live_user = live_user.get("name", "liveuser")
+
+        session = self.config.get("session", "")
+        session_type = self.config.get("session_type", "x11")
+
         if dm == "gdm":
-            gdm_conf = self.target_root / "etc" / "gdm" / "custom.conf"
-            gdm_conf.parent.mkdir(parents=True, exist_ok=True)
-            with open(gdm_conf, "w") as f:
-                f.write(f"[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin={live_user}\n")
+            self._configure_gdm_autologin(live_user, session)
+        elif dm == "lightdm":
+            self._configure_lightdm_autologin(live_user, session)
+        elif dm == "sddm":
+            self._configure_sddm_autologin(live_user, session, session_type)
+        elif dm == "lxdm":
+            self._configure_lxdm_autologin(live_user, session)
+        else:
+            logger.warning(f"Autologin not implemented for display manager: {dm}")
+
+    def _configure_gdm_autologin(self, live_user: str, session: str):
+        gdm_conf = self.target_root / "etc" / "gdm" / "custom.conf"
+        gdm_conf.parent.mkdir(parents=True, exist_ok=True)
+        content = (
+            "[daemon]\n"
+            f"AutomaticLoginEnable=True\n"
+            f"AutomaticLogin={live_user}\n"
+            "TimedLoginEnable=False\n\n"
+            "[security]\n\n"
+            "[xdmcp]\n\n"
+            "[chooser]\n\n"
+            "[debug]\n"
+        )
+        gdm_conf.write_text(content)
+        logger.info(f"Configured GDM autologin for {live_user}")
+
+    def _configure_lightdm_autologin(self, live_user: str, session: str):
+        # Main lightdm.conf
+        lightdm_conf = self.target_root / "etc" / "lightdm" / "lightdm.conf"
+        lightdm_conf.parent.mkdir(parents=True, exist_ok=True)
+        content = (
+            "[LightDM]\n\n"
+            "[Seat:*]\n"
+            f"autologin-user={live_user}\n"
+            "autologin-user-timeout=0\n"
+            "autologin-in-background=false\n"
+        )
+        if session:
+            content += f"autologin-session={session}\n"
+        content += (
+            "user-session=default\n"
+            "greeter-show-manual-login=false\n"
+            "greeter-hide-users=false\n\n"
+            "[XDMCPServer]\n\n"
+            "[VNCServer]\n"
+        )
+        lightdm_conf.write_text(content)
+
+        # Drop-in for greeter-specific config (gtk greeter)
+        greeter_conf = self.target_root / "etc" / "lightdm" / "lightdm-gtk-greeter.conf"
+        greeter_content = (
+            "[greeter]\n"
+            "background=/usr/share/backgrounds/fedora-modern/fedora-modern.jpg\n"
+            "theme-name=Adwaita-dark\n"
+            "icon-theme-name=Adwaita\n"
+            "font-name=Sans 11\n"
+            "indicators=~spacer;~clock;~spacer;~session;~language;~a11y;~power\n"
+            "clock-format=%H:%M\n"
+            "show-indicators-on-lockscreen=true\n"
+            "hide-user-image=false\n"
+        )
+        greeter_conf.write_text(greeter_content)
+
+        # PAM group for autologin (required for lightdm autologin to work without password)
+        pam_autologin = self.target_root / "etc" / "pam.d" / "lightdm-autologin"
+        if not pam_autologin.exists():
+            pam_content = (
+                "#%PAM-1.0\n"
+                "auth        required    pam_env.so\n"
+                "auth        required    pam_nologin.so\n"
+                "-auth       optional    pam_kwallet5.so\n"
+                "-auth       optional    pam_gnome_keyring.so\n"
+                "auth        sufficient  pam_succeed_if.so user ingroup autologin\n"
+                "auth        required    pam_permit.so\n"
+                "account     include     system-auth\n"
+                "password    include     system-auth\n"
+                "session     required    pam_limits.so\n"
+                "session     include     system-auth\n"
+                "-session    optional    pam_kwallet5.so auto_start\n"
+                "-session    optional    pam_gnome_keyring.so auto_start\n"
+                "session     required    pam_loginuid.so\n"
+                "session     optional    pam_systemd.so\n"
+            )
+            pam_autologin.parent.mkdir(parents=True, exist_ok=True)
+            pam_autologin.write_text(pam_content)
+
+        # Add live_user to autologin group (required by PAM rule above)
+        try:
+            self.chroot.run_in_chroot(["groupadd", "-f", "autologin"], check=False)
+            self.chroot.run_in_chroot(["usermod", "-aG", "autologin", live_user], check=False)
+        except Exception:
+            pass
+
+        logger.info(f"Configured LightDM autologin for {live_user} (session={session or 'default'})")
+
+    def _configure_sddm_autologin(self, live_user: str, session: str, session_type: str):
+        sddm_conf_dir = self.target_root / "etc" / "sddm.conf.d"
+        sddm_conf_dir.mkdir(parents=True, exist_ok=True)
+        # Determine correct session name for SDDM
+        # SDDM looks for .desktop files in /usr/share/xsessions or /usr/share/wayland-sessions
+        if session_type == "wayland":
+            session_dir = "wayland-sessions"
+        else:
+            session_dir = "xsessions"
+
+        content = (
+            "[Autologin]\n"
+            f"User={live_user}\n"
+            f"Session={session}\n\n"
+            "[General]\n"
+            "HaltCommand=/usr/bin/systemctl poweroff\n"
+            "RebootCommand=/usr/bin/systemctl reboot\n"
+            "Numlock=none\n\n"
+            "[Theme]\n"
+            "Current=breeze\n\n"
+            "[Users]\n"
+            "MaximumUid=60000\n"
+            "MinimumUid=1000\n"
+            "RememberLastUser=true\n"
+        )
+        (sddm_conf_dir / "autologin.conf").write_text(content)
+
+        # SDDM also needs the user in the autologin group on some distros
+        try:
+            self.chroot.run_in_chroot(["groupadd", "-f", "autologin"], check=False)
+            self.chroot.run_in_chroot(["usermod", "-aG", "autologin", live_user], check=False)
+        except Exception:
+            pass
+
+        logger.info(f"Configured SDDM autologin for {live_user} (session={session}, type={session_type})")
+
+    def _configure_lxdm_autologin(self, live_user: str, session: str):
+        lxdm_conf = self.target_root / "etc" / "lxdm" / "lxdm.conf"
+        lxdm_conf.parent.mkdir(parents=True, exist_ok=True)
+        content = (
+            "[base]\n"
+            f"autologin={live_user}\n"
+            "arg=/usr/bin/X\n"
+            "numlock=0\n"
+            f"session={f'/usr/bin/{session}' if session else ''}\n\n"
+            "[server]\n\n"
+            "[display]\n"
+            "gtk_theme=Clearlooks\n"
+            "bg=/usr/share/backgrounds/fedora-modern/fedora-modern.jpg\n"
+            "bottom_pane=1\n"
+            "lang=1\n"
+            "keyboard=0\n"
+            "theme=Industrial\n"
+        )
+        lxdm_conf.write_text(content)
+        logger.info(f"Configured LXDM autologin for {live_user}")
 
     def configure_plymouth(self):
         if self.chroot.mode == "mock":
@@ -87,6 +251,183 @@ class SystemCustomizer:
         from fedora_builder.core.dnf_manager import DNFManager
         dnf_mgr = DNFManager(self.chroot, self.config)
         dnf_mgr.configure_selinux(self.config.get("selinux_mode", "permissive"))
+
+    def configure_live_performance(self):
+        """
+        Apply runtime optimisations for a live ISO environment:
+          - Tune kernel VM parameters (swappiness, dirty ratio, huge pages)
+          - Keep systemd-journald entirely in RAM (no persistent journal)
+          - Silence coredumps
+          - Reduce systemd default-timeout values for faster boot/shutdown
+          - Disable systemd-oomd (earlyoom is lighter) or configure it
+        """
+        if self.chroot.mode == "mock":
+            return
+
+        # ── /etc/sysctl.d/90-live.conf ──────────────────────────────────────
+        sysctl_dir = self.target_root / "etc" / "sysctl.d"
+        sysctl_dir.mkdir(parents=True, exist_ok=True)
+        (sysctl_dir / "90-live.conf").write_text(
+            "# Fedora Live ISO performance tuning\n"
+            "vm.swappiness = 10\n"               # prefer RAM over swap/zram
+            "vm.dirty_ratio = 20\n"
+            "vm.dirty_background_ratio = 5\n"
+            "vm.vfs_cache_pressure = 50\n"        # keep inode/dentry cache longer
+            "kernel.core_pattern = /dev/null\n"   # discard coredumps
+            "kernel.nmi_watchdog = 0\n"
+            "net.ipv4.tcp_fastopen = 3\n"
+        )
+
+        # ── /etc/systemd/journald.conf.d/90-live.conf ───────────────────────
+        journald_dir = self.target_root / "etc" / "systemd" / "journald.conf.d"
+        journald_dir.mkdir(parents=True, exist_ok=True)
+        (journald_dir / "90-live.conf").write_text(
+            "[Journal]\n"
+            "Storage=volatile\n"           # RAM only, no /var/log/journal
+            "Compress=yes\n"
+            "SystemMaxUse=64M\n"
+            "RuntimeMaxUse=64M\n"
+            "ForwardToSyslog=no\n"
+            "MaxLevelStore=warning\n"      # only warnings+ in live (reduces noise)
+        )
+
+        # ── /etc/systemd/system.conf.d/90-live.conf ─────────────────────────
+        system_conf_dir = self.target_root / "etc" / "systemd" / "system.conf.d"
+        system_conf_dir.mkdir(parents=True, exist_ok=True)
+        (system_conf_dir / "90-live.conf").write_text(
+            "[Manager]\n"
+            "DefaultTimeoutStartSec=15s\n"
+            "DefaultTimeoutStopSec=10s\n"
+            "DefaultDeviceTimeoutSec=10s\n"
+        )
+
+        # ── /etc/systemd/coredump.conf.d/90-live.conf ───────────────────────
+        coredump_dir = self.target_root / "etc" / "systemd" / "coredump.conf.d"
+        coredump_dir.mkdir(parents=True, exist_ok=True)
+        (coredump_dir / "90-live.conf").write_text(
+            "[Coredump]\n"
+            "Storage=none\n"
+            "ProcessSizeMax=0\n"
+        )
+
+        # ── /etc/systemd/logind.conf.d/90-live.conf ─────────────────────────
+        # Stop systemd-logind from keeping sessions in RAM after logout
+        logind_dir = self.target_root / "etc" / "systemd" / "logind.conf.d"
+        logind_dir.mkdir(parents=True, exist_ok=True)
+        (logind_dir / "90-live.conf").write_text(
+            "[Login]\n"
+            "NAutoVTs=2\n"              # only 2 virtual ttys instead of 6
+            "ReserveVT=1\n"
+            "KillUserProcesses=yes\n"
+            "RemoveIPC=yes\n"
+        )
+
+        logger.info("Applied live performance tuning (sysctl, journald, systemd, coredump)")
+
+    def configure_network_sharing(self):
+        """
+        Configure NetworkManager, mDNS/Avahi and basic file-sharing defaults
+        suitable for a live environment.
+        """
+        if self.chroot.mode == "mock":
+            return
+
+        # ── NetworkManager: use systemd-resolved, IPv6 privacy, faster roaming ──
+        nm_conf_dir = self.target_root / "etc" / "NetworkManager" / "conf.d"
+        nm_conf_dir.mkdir(parents=True, exist_ok=True)
+        (nm_conf_dir / "90-live.conf").write_text(
+            "[main]\n"
+            "dns=systemd-resolved\n"
+            "systemd-resolved=true\n\n"
+            "[connection]\n"
+            "connection.stable-id=${CONNECTION}/${BOOT}\n"  # fresh ID each boot
+            "ipv6.ip6-privacy=2\n"                          # RFC4941 privacy
+            "ethernet.cloned-mac-address=stable\n"
+            "wifi.cloned-mac-address=stable\n\n"
+            "[connectivity]\n"
+            "uri=https://fedoraproject.org/static/hotspot.txt\n"
+            "response=OK\n"
+        )
+
+        # ── systemd-resolved: enable mDNS and LLMNR on all interfaces ────────
+        resolved_dir = self.target_root / "etc" / "systemd" / "resolved.conf.d"
+        resolved_dir.mkdir(parents=True, exist_ok=True)
+        (resolved_dir / "90-live.conf").write_text(
+            "[Resolve]\n"
+            "MulticastDNS=yes\n"
+            "LLMNR=yes\n"
+            "Cache=yes\n"
+            "DNSStubListener=yes\n"
+        )
+
+        # ── /etc/nsswitch.conf: ensure mdns4_minimal for .local resolution ───
+        nsswitch = self.target_root / "etc" / "nsswitch.conf"
+        if nsswitch.exists():
+            content = nsswitch.read_text()
+            if "mdns4_minimal" not in content:
+                content = content.replace(
+                    "hosts:      files dns",
+                    "hosts:      files mdns4_minimal [NOTFOUND=return] dns myhostname"
+                )
+                if "mdns4_minimal" not in content:
+                    # Generic fallback if pattern didn't match
+                    content = content.replace(
+                        "hosts:      files",
+                        "hosts:      files mdns4_minimal [NOTFOUND=return]"
+                    )
+                nsswitch.write_text(content)
+
+        # ── Avahi daemon: enable wide-area mDNS, disable IPv6 if not needed ──
+        avahi_conf = self.target_root / "etc" / "avahi" / "avahi-daemon.conf"
+        if avahi_conf.exists():
+            content = avahi_conf.read_text()
+            # Ensure publish-workstation is on for easy discovery
+            if "publish-workstation" not in content:
+                content += "\n[publish]\npublish-workstation=yes\npublish-hinfo=yes\n"
+                avahi_conf.write_text(content)
+        else:
+            avahi_conf.parent.mkdir(parents=True, exist_ok=True)
+            avahi_conf.write_text(
+                "[server]\n"
+                "use-ipv4=yes\n"
+                "use-ipv6=yes\n"
+                "ratelimit-interval-usec=1000000\n"
+                "ratelimit-burst=1000\n\n"
+                "[wide-area]\n"
+                "enable-wide-area=yes\n\n"
+                "[publish]\n"
+                "publish-hinfo=yes\n"
+                "publish-workstation=yes\n"
+                "publish-domain=yes\n\n"
+                "[reflector]\n\n"
+                "[rlimits]\n"
+                "rlimit-core=0\n"
+                "rlimit-data=4194304\n"
+                "rlimit-fsize=0\n"
+                "rlimit-nofile=768\n"
+                "rlimit-stack=4194304\n"
+                "rlimit-nproc=3\n"
+            )
+
+        # ── firewalld: open mDNS and Samba client ports in the default zone ──
+        firewalld_services_dir = self.target_root / "etc" / "firewalld" / "zones"
+        firewalld_services_dir.mkdir(parents=True, exist_ok=True)
+        # Drop-in to ensure mdns and samba-client are allowed in FedoraWorkstation
+        fw_live = self.target_root / "etc" / "firewalld" / "zones" / "FedoraWorkstation.xml"
+        if not fw_live.exists():
+            fw_live.write_text(
+                '<?xml version="1.0" encoding="utf-8"?>\n'
+                '<zone>\n'
+                '  <short>FedoraWorkstation</short>\n'
+                '  <description>Fedora Live default zone</description>\n'
+                '  <service name="mdns"/>\n'
+                '  <service name="samba-client"/>\n'
+                '  <service name="ssh"/>\n'
+                '  <service name="dhcpv6-client"/>\n'
+                '</zone>\n'
+            )
+
+        logger.info("Configured NetworkManager, mDNS/Avahi, and firewalld for live sharing")
 
     def configure_zram(self):
         """Configure systemd-zram-generator for RAM compressed swap (Fedora default)."""
@@ -274,6 +615,8 @@ class SystemCustomizer:
         self.configure_plymouth()
         self.configure_selinux()
         self.configure_zram()
+        self.configure_live_performance()
+        self.configure_network_sharing()
         self.configure_flathub()
         self.configure_polkit_power()
         self.configure_calamares()

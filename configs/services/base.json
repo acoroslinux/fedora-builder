@@ -5,8 +5,11 @@
     "dbus",
     "dbus-broker",
     "firewalld",
+    "avahi-daemon"
+  ],
+  "disable": [
     "auditd",
-    "avahi-daemon",
-    "crond"
+    "crond",
+    "systemd-oomd"
   ]
 }
