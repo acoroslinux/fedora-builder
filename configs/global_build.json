@@ -10,9 +10,9 @@
     "kernel": "kernel",
     "bootloader": "grub2-hybrid",
     "variant": "live",
-    "package_profiles": ["base", "networking", "audio", "bluetooth", "printing", "filesystems"],
-    "service_profiles": ["base", "network", "hardware"],
-    "live_user": "liveuser",
+    "package_profiles": ["base", "networking", "network-shares", "audio", "bluetooth", "printing", "filesystems"],
+    "service_profiles": ["base", "network"],
+    "live_user": "live",
     "live_password": "live",
     "compression": "zstd",
     "generate_manifest": true

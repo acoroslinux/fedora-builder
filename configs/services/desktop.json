@@ -6,11 +6,5 @@
     "udisks2",
     "colord",
     "acpid"
-  ],
-  "disable": [
-    "thermald",
-    "fwupd",
-    "pcscd"
   ]
 }
-

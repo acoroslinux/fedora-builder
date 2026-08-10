@@ -1,15 +1,5 @@
 {
   "enable": [
-    "systemd-timesyncd",
-    "systemd-resolved",
-    "dbus",
-    "dbus-broker",
-    "firewalld",
     "avahi-daemon"
-  ],
-  "disable": [
-    "auditd",
-    "crond",
-    "systemd-oomd"
   ]
 }
