@@ -75,8 +75,8 @@ class BuildOrchestrator:
         self.with_zram = with_zram
         self.force_isolated_toolchain = force_isolated_toolchain
 
-        if self.with_calamares and "calamares" not in self.package_profiles:
-            self.package_profiles.append("calamares")
+        if self.with_calamares and "installer" not in self.package_profiles:
+            self.package_profiles.append("installer")
 
         if self.multimedia_codecs:
             if "rpmfusion-free" not in self.repo_profiles:

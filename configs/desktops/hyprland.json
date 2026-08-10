@@ -22,5 +22,16 @@
   "session": "hyprland",
   "session_type": "wayland",
   "services_enable": ["sddm"],
-  "use_wayland": true
+  "use_wayland": true,
+  "desktop_environment": {
+    "name": "Hyprland Compositor",
+    "customizations_path": "configs/custom_files",
+    "use_common_config": true,
+    "copy_files": [
+      {
+        "source": "sddm",
+        "destination": "/etc/sddm.conf.d"
+      }
+    ]
+  }
 }

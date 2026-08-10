@@ -1,19 +1,33 @@
 {
   "base_copy_files": [
-    "/etc/sudoers",
-    "/etc/skel/.bashrc",
-    "/etc/skel/.profile",
-    "/usr/local/bin/installer-script.sh"
-  ],
-  "base_services_enable": [
-    "systemd-resolved",
-    "NetworkManager",
-    "dbus-broker"
-  ],
-  "base_packages_install": [
-    "sudo",
-    "bash",
-    "coreutils",
-    "systemd"
+    {
+      "source": "autostart",
+      "destination": "/etc/xdg/autostart"
+    },
+    {
+      "source": "applications",
+      "destination": "/usr/share/applications"
+    },
+    {
+      "source": "plymouth/themes/fedora-modern",
+      "destination": "/usr/share/plymouth/themes/fedora-modern"
+    },
+    {
+      "source": "grub/modern",
+      "destination": "/usr/share/grub/themes/modern"
+    },
+    {
+      "source": "samba",
+      "destination": "/etc/samba"
+    },
+    {
+      "source": "sudoers.d",
+      "destination": "/etc/sudoers.d"
+    },
+    {
+      "source": "usr/share/backgrounds/fedora-modern",
+      "destination": "/usr/share/backgrounds/fedora-modern"
+    }
   ]
 }
+

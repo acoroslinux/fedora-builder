@@ -1,0 +1,20 @@
+{
+  "name": "installer",
+  "description": "Graphical system installer (Calamares)",
+  "packages": [
+    "calamares",
+    "calamares-libs",
+    "kpmcore"
+  ],
+  "copy_files": [
+    {
+      "source": "calamares",
+      "destination": "/etc/calamares"
+    },
+    {
+      "source": "scripts/add-installer-desktop-icon.sh",
+      "destination": "/usr/local/bin/add-installer-desktop-icon.sh",
+      "permissions": "0755"
+    }
+  ]
+}

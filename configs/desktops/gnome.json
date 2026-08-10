@@ -21,5 +21,20 @@
   "session": "gnome",
   "session_type": "wayland",
   "services_enable": ["gdm"],
-  "use_wayland": true
+  "use_wayland": true,
+  "desktop_environment": {
+    "name": "GNOME Desktop",
+    "customizations_path": "configs/custom_files",
+    "use_common_config": true,
+    "copy_files": [
+      {
+        "source": "desktops/gnome/etc/skel",
+        "destination": "/etc/skel"
+      },
+      {
+        "source": "dconf",
+        "destination": "/etc/dconf"
+      }
+    ]
+  }
 }

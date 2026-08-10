@@ -483,71 +483,18 @@ class SystemCustomizer:
 
     def configure_calamares(self):
         """
-        Install Calamares configuration, branding and the desktop-icon autostart
-        script when with_calamares is enabled.
-
-        Files are sourced from configs/custom_files/calamares/ (settings.conf,
-        branding/, modules/) and configs/custom_files/scripts/.
-        The copy_custom_files() step will overlay configs/custom_files/autostart/
-        into /etc/xdg/autostart/ automatically, so only the script itself needs
-        to be placed here.
+        Apply Calamares-specific system configuration that cannot be done via
+        copy_files alone (polkit rule). File copies are handled by the unified
+        copy_files pipeline: packages/installer.json declares the calamares/
+        config tree and the icon script, base_customizations.json declares
+        the autostart entry.
         """
         if self.chroot.mode == "mock":
             return
         if not self.config.get("with_calamares", False):
             return
 
-        from fedora_builder.core.path_utils import resolve_from_project
-        project_root = resolve_from_project("")
-
-        # ── Calamares config tree (/etc/calamares/) ───────────────────────────
-        src_calamares = project_root / "configs" / "custom_files" / "calamares"
-        dst_calamares = self.target_root / "etc" / "calamares"
-
-        if src_calamares.exists():
-            dst_calamares.mkdir(parents=True, exist_ok=True)
-
-            # settings.conf
-            src_settings = src_calamares / "settings.conf"
-            if src_settings.exists():
-                shutil.copy2(src_settings, dst_calamares / "settings.conf")
-
-            # branding/
-            src_branding = src_calamares / "branding"
-            if src_branding.exists():
-                dst_branding = dst_calamares / "branding"
-                dst_branding.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(src_branding, dst_branding, dirs_exist_ok=True,
-                                symlinks=True, ignore_dangling_symlinks=True)
-
-            # modules/
-            src_modules = src_calamares / "modules"
-            if src_modules.exists():
-                dst_modules = dst_calamares / "modules"
-                dst_modules.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(src_modules, dst_modules, dirs_exist_ok=True,
-                                symlinks=True, ignore_dangling_symlinks=True)
-
-            logger.info(f"Installed Calamares config from {src_calamares} → {dst_calamares}")
-        else:
-            logger.warning("configs/custom_files/calamares/ not found — skipping Calamares config install")
-
-        # ── Desktop-icon autostart script (/usr/local/bin/) ──────────────────
-        src_script = project_root / "configs" / "custom_files" / "scripts" / "add-installer-desktop-icon.sh"
-        if src_script.exists():
-            dst_script = self.target_root / "usr" / "local" / "bin" / "add-installer-desktop-icon.sh"
-            dst_script.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_script, dst_script)
-            dst_script.chmod(0o755)
-
-        # ── Autostart .desktop (/etc/xdg/autostart/) ─────────────────────────
-        src_autostart = project_root / "configs" / "custom_files" / "autostart" / "create-install-icon.desktop"
-        if src_autostart.exists():
-            dst_autostart_dir = self.target_root / "etc" / "xdg" / "autostart"
-            dst_autostart_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_autostart, dst_autostart_dir / "create-install-icon.desktop")
-
-        # ── Polkit rule: allow pkexec calamares without password ──────────────
+        # Polkit rule: allow pkexec calamares without password prompt
         polkit_dir = self.target_root / "etc" / "polkit-1" / "rules.d"
         polkit_dir.mkdir(parents=True, exist_ok=True)
         (polkit_dir / "49-calamares.rules").write_text(
@@ -559,13 +506,16 @@ class SystemCustomizer:
             "    }\n"
             "});\n"
         )
+        logger.info("Configured Calamares polkit rule")
 
     def copy_custom_files(self):
         """
-        Copies custom files and overlays into the target rootfs chroot.
-        Supports both:
-        1. Direct rootfs overlay from configs/custom_files/ -> /
-        2. Structured JSON custom_files / copy_files entries mapping source -> destination.
+        Copy custom files into the target rootfs using the unified copy_files list
+        assembled by the config loader from three sources:
+          1. base_customizations.json → base_copy_files  (common to all builds)
+          2. desktop config           → desktop_environment.copy_files  (per-DE files)
+          3. package profiles         → copy_files  (e.g. installer.json)
+        All entries resolve relative to configs/custom_files/.
         """
         if self.chroot.mode == "mock":
             logger.info("[MOCK CUSTOMIZER] Simulating copying custom files into chroot.")
@@ -575,41 +525,16 @@ class SystemCustomizer:
         project_root = resolve_from_project("")
         custom_files_dir = project_root / "configs" / "custom_files"
 
-        # 1. Direct overlay from configs/custom_files/ -> target_root/
-        if custom_files_dir.exists() and custom_files_dir.is_dir():
-            for item in custom_files_dir.iterdir():
-                if item.name == ".gitkeep":
-                    continue
-                dest_path = self.target_root / item.name
-                if item.is_dir():
-                    shutil.copytree(item, dest_path, dirs_exist_ok=True, symlinks=True, ignore_dangling_symlinks=True)
-                else:
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(item, dest_path)
-
-        # 2. Structured list from JSON config
-        custom_files_list = list(self.config.get("custom_files", []))
         copy_files = self.config.get("copy_files", [])
-        if isinstance(copy_files, list):
-            for entry in copy_files:
-                if entry not in custom_files_list:
-                    custom_files_list.append(entry)
-
-        desktop_env = self.config.get("desktop_environment", {})
-        if isinstance(desktop_env, dict):
-            for entry in desktop_env.get("copy_files", []):
-                if entry not in custom_files_list:
-                    custom_files_list.append(entry)
-
-        if not custom_files_list:
+        if not copy_files:
             return
 
         py_ver = "3.12"
         python_dirs = list(self.target_root.glob("usr/lib/python3.*"))
         if python_dirs:
-            py_ver = python_dirs[0].name.replace("python", "")
+            py_ver = sorted(python_dirs)[-1].name.replace("python", "")
 
-        for entry in custom_files_list:
+        for entry in copy_files:
             if not isinstance(entry, dict):
                 continue
             src_rel = entry.get("source")
@@ -618,28 +543,32 @@ class SystemCustomizer:
                 continue
 
             dest_rel = dest_rel.format(python_version=py_ver)
+
+            # Resolve source: configs/custom_files/<source> first, then project root
             src_path = custom_files_dir / src_rel
             if not src_path.exists():
                 src_path = project_root / src_rel
-            dest_path = self.target_root / dest_rel.lstrip("/")
-
             if not src_path.exists():
-                logger.warning(f"Custom file source path does not exist, skipping: {src_path}")
+                logger.warning(f"copy_files: source not found, skipping: {src_path}")
                 continue
 
+            dest_path = self.target_root / dest_rel.lstrip("/")
             dest_path.parent.mkdir(parents=True, exist_ok=True)
+
             if src_path.is_dir():
-                shutil.copytree(src_path, dest_path, dirs_exist_ok=True, symlinks=True, ignore_dangling_symlinks=True)
+                shutil.copytree(src_path, dest_path, dirs_exist_ok=True,
+                                symlinks=True, ignore_dangling_symlinks=True)
             else:
                 shutil.copy2(src_path, dest_path)
 
             mode_str = entry.get("permissions")
             if mode_str:
                 try:
-                    mode = int(mode_str, 8)
-                    dest_path.chmod(mode)
+                    dest_path.chmod(int(mode_str, 8))
                 except Exception:
                     pass
+
+            logger.debug(f"copy_files: {src_rel} → {dest_rel}")
 
     def configure_live_environment(self):
         self.setup_live_users()

@@ -69,54 +69,71 @@ class ConfigLoader:
             "arch_info": {},
             "system": {},
             "boot": {},
-            "variant_info": {}
+            "variant_info": {},
+            "copy_files": [],
         }
 
         # 1. Load global build config
         if global_config_path.exists():
             config = self._merge_dicts(config, self.load_json(global_config_path))
-        
-        # 2. Release
+
+        # 2. Load base_customizations.json and promote base_copy_files → copy_files
+        base_custom_path = global_config_path.parent / "base_customizations.json"
+        if base_custom_path.exists():
+            base_custom = self.load_json(base_custom_path)
+            for entry in base_custom.get("base_copy_files", []):
+                if entry not in config["copy_files"]:
+                    config["copy_files"].append(entry)
+
+        # 3. Release
         config = self._merge_dicts(config, self.load_profile("releases", release))
-        
-        # 3. Architecture
+
+        # 4. Architecture
         config = self._merge_dicts(config, self.load_profile("architectures", architecture))
-        
-        # 4. Variant
+
+        # 5. Variant
         if variant:
             config = self._merge_dicts(config, self.load_profile("variants", variant))
-            
-        # 5. Desktop
+
+        # 6. Desktop — also extract desktop_environment.copy_files into top-level copy_files
         if desktop:
-            config = self._merge_dicts(config, self.load_profile("desktops", desktop))
-            
-        # 6. Kernel
+            desktop_data = self.load_profile("desktops", desktop)
+            config = self._merge_dicts(config, desktop_data)
+            for entry in desktop_data.get("desktop_environment", {}).get("copy_files", []):
+                if entry not in config["copy_files"]:
+                    config["copy_files"].append(entry)
+
+        # 7. Kernel
         if kernel:
             config = self._merge_dicts(config, self.load_profile("kernels", kernel))
-            
-        # 7. Bootloader
+
+        # 8. Bootloader
         if bootloader:
             config = self._merge_dicts(config, self.load_profile("bootloaders", bootloader))
-            
-        # 8. Base packages
+
+        # 9. Base packages
         config = self._merge_dicts(config, self.load_profile("packages", "base"))
-        
-        # 9. Package profiles
+
+        # 10. Package profiles — also extract copy_files from each profile
         if package_profiles:
             for profile in package_profiles:
-                config = self._merge_dicts(config, self.load_profile("packages", profile))
-                
-        # 10. Service profiles
+                profile_data = self.load_profile("packages", profile)
+                config = self._merge_dicts(config, profile_data)
+                for entry in profile_data.get("copy_files", []):
+                    if entry not in config["copy_files"]:
+                        config["copy_files"].append(entry)
+
+        # 11. Service profiles
         if service_profiles:
             for profile in service_profiles:
                 config = self._merge_dicts(config, self.load_profile("services", profile))
-                
-        # 11. Repo profiles
+
+        # 12. Repo profiles
         if repo_profiles:
             for profile in repo_profiles:
                 config = self._merge_dicts(config, self.load_profile("repos", profile))
-                
-        # 12. Live User profile
+
+        # 13. Live User profile
         if live_profile:
             config["live_user"] = self._merge_dicts(config.get("live_user", {}), self.load_profile("live-users", live_profile))
 

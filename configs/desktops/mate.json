@@ -20,5 +20,16 @@
   "session": "mate",
   "session_type": "x11",
   "services_enable": ["lightdm"],
-  "use_wayland": false
+  "use_wayland": false,
+  "desktop_environment": {
+    "name": "MATE Desktop",
+    "customizations_path": "configs/custom_files",
+    "use_common_config": true,
+    "copy_files": [
+      {
+        "source": "lightdm",
+        "destination": "/etc/lightdm"
+      }
+    ]
+  }
 }
