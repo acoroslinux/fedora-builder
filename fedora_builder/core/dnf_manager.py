@@ -243,7 +243,7 @@ class DNFManager:
         return args
 
     def _get_install_dnf_args(self) -> List[str]:
-        return self._get_base_dnf_args() + ["--allowerasing"]
+        return self._get_base_dnf_args()
 
     def install_packages(self, packages: List[str]):
         if not packages:
@@ -253,7 +253,9 @@ class DNFManager:
             return
         if self.chroot.mode == "mock":
             return
-        args = self._get_install_dnf_args() + ["-y", "install"] + real_pkgs
+        # "--allowerasing" must come after the "install" command: dnf5 rejects it
+        # as a global option and requires it to be placed after the subcommand.
+        args = self._get_install_dnf_args() + ["-y", "install", "--allowerasing"] + real_pkgs
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Package installation failed")
@@ -264,7 +266,9 @@ class DNFManager:
         formatted_groups = [g if g.startswith("@") else f"@{g}" for g in groups]
         if self.chroot.mode == "mock":
             return
-        args = self._get_install_dnf_args() + ["-y", "install"] + formatted_groups
+        # "--allowerasing" must come after the "install" command: dnf5 rejects it
+        # as a global option and requires it to be placed after the subcommand.
+        args = self._get_install_dnf_args() + ["-y", "install", "--allowerasing"] + formatted_groups
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Group installation failed")

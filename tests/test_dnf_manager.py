@@ -147,7 +147,7 @@ class TestInstallPackages:
 
         args = mgr._run_dnf.call_args.args[0]
         assert "--allowerasing" in args
-        assert args.index("--allowerasing") < args.index("install")
+        assert args.index("--allowerasing") > args.index("install")
 
 
 # ── test_install_groups ───────────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ class TestInstallGroups:
 
         args = mgr._run_dnf.call_args.args[0]
         assert "--allowerasing" in args
-        assert args.index("--allowerasing") < args.index("install")
+        assert args.index("--allowerasing") > args.index("install")
 
 
 # ── test_install_all ──────────────────────────────────────────────────────────────
