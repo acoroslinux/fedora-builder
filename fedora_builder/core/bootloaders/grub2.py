@@ -3,6 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional
+from fedora_builder.core.path_utils import resolve_from_project
 
 logger = logging.getLogger("grub2")
 
@@ -13,6 +14,40 @@ class Grub2Bootloader:
         self.arch = arch
         self.iso_uuid = iso_uuid
         self.toolchain = toolchain
+
+    def _get_template_placeholders(self, iso_label: str, kernel_params: str) -> Dict[str, str]:
+        variant = self.config.get("variant")
+        installer = self.config.get("installer")
+        desktop = str(self.config.get("desktop", "")).upper()
+        distro = str(self.config.get("distro", "Fedora")).title()
+        arch = self.arch
+        keymap = self.config.get("keymap", "us")
+        locale = self.config.get("locale", "en_US.UTF-8")
+        live_user = self.config.get("live_user", "liveuser")
+        if isinstance(live_user, dict):
+            live_user = live_user.get("name", "liveuser")
+
+        if variant == "server" and installer == "anaconda":
+            boot_title = "Fedora Server Installer (text mode)"
+            boot_cmdline = "inst.text"
+        else:
+            boot_title = f"{distro} Modern {desktop}".strip() if desktop else f"{distro} Modern"
+            boot_cmdline = ""
+
+        return {
+            "@@VOL_ID@@": iso_label,
+            "@@ISO_LABEL@@": iso_label,
+            "@@BOOT_TITLE@@": boot_title,
+            "@@DISTRO_NAME@@": f"{distro} Modern",
+            "@@DESKTOP@@": desktop,
+            "@@ARCH@@": arch,
+            "@@KERNEL_PARAMS@@": kernel_params,
+            "@@BOOT_CMDLINE@@": boot_cmdline,
+            "@@KEYMAP@@": keymap,
+            "@@LOCALE@@": locale,
+            "@@LIVE_USER@@": live_user,
+            "@@SPLASHIMAGE@@": "splash.png"
+        }
 
     def _menu_labels(self) -> Dict[str, str]:
         variant = self.config.get("variant")
@@ -76,6 +111,14 @@ class Grub2Bootloader:
     # -------------------------------------------------------------------------
     def generate_grub_cfg(self, kernel_name: str, initramfs_name: str,
                           iso_label: str, kernel_params: str) -> str:
+        grub_template = resolve_from_project("configs/bootloaders/templates/grub.cfg.in")
+        if grub_template.exists():
+            content = grub_template.read_text()
+            placeholders = self._get_template_placeholders(iso_label, kernel_params)
+            for k, v in placeholders.items():
+                content = content.replace(k, str(v))
+            return content
+
         root_param = f"root=live:CDLABEL={iso_label}"
         kernel_path = "/images/pxeboot/vmlinuz"
         initrd_path = "/images/pxeboot/initrd.img"
@@ -120,7 +163,15 @@ class Grub2Bootloader:
     # loopback.cfg (boot/grub2/loopback.cfg)
     # -------------------------------------------------------------------------
     def generate_loopback_cfg(self, kernel_name: str, initramfs_name: str,
-                               iso_label: str, kernel_params: str) -> str:
+                              iso_label: str, kernel_params: str) -> str:
+        loopback_template = resolve_from_project("configs/bootloaders/templates/loopback.cfg.in")
+        if loopback_template.exists():
+            content = loopback_template.read_text()
+            placeholders = self._get_template_placeholders(iso_label, kernel_params)
+            for k, v in placeholders.items():
+                content = content.replace(k, str(v))
+            return content
+
         root_param = f"root=live:CDLABEL={iso_label}"
         kernel_path = "/images/pxeboot/vmlinuz"
         initrd_path = "/images/pxeboot/initrd.img"
@@ -147,7 +198,15 @@ class Grub2Bootloader:
     # isolinux.cfg for BIOS legacy syslinux boot
     # -------------------------------------------------------------------------
     def generate_isolinux_cfg(self, kernel_name: str, initramfs_name: str,
-                               iso_label: str, kernel_params: str) -> str:
+                              iso_label: str, kernel_params: str) -> str:
+        isolinux_template = resolve_from_project("configs/bootloaders/templates/isolinux.cfg.in")
+        if isolinux_template.exists():
+            content = isolinux_template.read_text()
+            placeholders = self._get_template_placeholders(iso_label, kernel_params)
+            for k, v in placeholders.items():
+                content = content.replace(k, str(v))
+            return content
+
         root_param = f"root=live:CDLABEL={iso_label}"
         labels = self._menu_labels()
         cfg  = "default vesamenu.c32\n"
@@ -170,6 +229,14 @@ class Grub2Bootloader:
     # EFI grub.cfg  (EFI/BOOT/grub.cfg  AND  EFI/fedora/grub.cfg)
     # -------------------------------------------------------------------------
     def generate_efi_grub_cfg(self, iso_label: str, kernel_params: str) -> str:
+        grub_template = resolve_from_project("configs/bootloaders/templates/grub.cfg.in")
+        if grub_template.exists():
+            content = grub_template.read_text()
+            placeholders = self._get_template_placeholders(iso_label, kernel_params)
+            for k, v in placeholders.items():
+                content = content.replace(k, str(v))
+            return content
+
         root_param = f"root=live:CDLABEL={iso_label}"
         kernel_path = "/images/pxeboot/vmlinuz"
         initrd_path = "/images/pxeboot/initrd.img"

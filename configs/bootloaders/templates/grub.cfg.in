@@ -1,0 +1,52 @@
+set default=0
+set timeout=15
+set timeout_style=menu
+
+# Source graphical configuration, fonts and display settings
+if [ -f /boot/grub2/config.cfg ]; then
+    source /boot/grub2/config.cfg
+elif [ -f /boot/grub/config.cfg ]; then
+    source /boot/grub/config.cfg
+fi
+
+insmod png
+insmod jpeg
+if [ -f /boot/grub2/themes/fedora-modern/fedora-grub-bg.jpg ]; then
+    background_image /boot/grub2/themes/fedora-modern/fedora-grub-bg.jpg
+fi
+
+# Main Live Boot Entries for Fedora
+menuentry 'Start @@BOOT_TITLE@@' --class fedora --class gnu-linux --class os --hotkey=l {
+    search --no-floppy --set=root --label @@VOL_ID@@
+    if [ -z "$root" ]; then
+        search --no-floppy --set=root --file /images/pxeboot/vmlinuz
+    fi
+    linux /images/pxeboot/vmlinuz root=live:CDLABEL=@@VOL_ID@@ rd.live.image rd.live.dir=LiveOS rd.live.squashimg=squashfs.img vconsole.keymap=@@KEYMAP@@ locale.LANG=@@LOCALE@@ quiet splash @@BOOT_CMDLINE@@ @@KERNEL_PARAMS@@
+    initrd /images/pxeboot/initrd.img
+}
+
+menuentry 'Test this media & start @@BOOT_TITLE@@' --class fedora --class gnu-linux --class os --hotkey=t {
+    search --no-floppy --set=root --label @@VOL_ID@@
+    if [ -z "$root" ]; then
+        search --no-floppy --set=root --file /images/pxeboot/vmlinuz
+    fi
+    linux /images/pxeboot/vmlinuz root=live:CDLABEL=@@VOL_ID@@ rd.live.image rd.live.check rd.live.dir=LiveOS rd.live.squashimg=squashfs.img vconsole.keymap=@@KEYMAP@@ locale.LANG=@@LOCALE@@ quiet splash @@BOOT_CMDLINE@@ @@KERNEL_PARAMS@@
+    initrd /images/pxeboot/initrd.img
+}
+
+menuentry 'Start @@BOOT_TITLE@@ (Safe Graphics - nomodeset)' --class fedora --class gnu-linux --class os --hotkey=f {
+    search --no-floppy --set=root --label @@VOL_ID@@
+    if [ -z "$root" ]; then
+        search --no-floppy --set=root --file /images/pxeboot/vmlinuz
+    fi
+    linux /images/pxeboot/vmlinuz root=live:CDLABEL=@@VOL_ID@@ rd.live.image rd.live.dir=LiveOS rd.live.squashimg=squashfs.img nomodeset xci586 noapic acpi=off vconsole.keymap=@@KEYMAP@@ locale.LANG=@@LOCALE@@ @@BOOT_CMDLINE@@ @@KERNEL_PARAMS@@
+    initrd /images/pxeboot/initrd.img
+}
+
+menuentry 'Reboot' --class reboot {
+    reboot
+}
+
+menuentry 'Power Off' --class shutdown {
+    halt
+}

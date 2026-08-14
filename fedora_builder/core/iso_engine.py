@@ -8,7 +8,7 @@ import logging
 from fedora_builder.core.toolchain_manager import ToolchainManager
 from fedora_builder.core.bootloaders.grub2 import Grub2Bootloader
 from fedora_builder.core.disk_engine import DiskEngine
-from fedora_builder.core.path_utils import resolve_from_project as _resolve_from_project
+from fedora_builder.core.path_utils import resolve_from_project
 
 logger = logging.getLogger("iso_engine")
 
@@ -307,6 +307,15 @@ class ISOEngine:
 
         # ---- BIOS grub.cfg + earlyboot.cfg + loopback.cfg ------------------
         if bios_enabled:
+            config_template = resolve_from_project("configs/bootloaders/templates/config.cfg.in")
+            if config_template.exists():
+                config_text = config_template.read_text()
+                placeholders = grub._get_template_placeholders(iso_label, kernel_params)
+                for k, v in placeholders.items():
+                    config_text = config_text.replace(k, str(v))
+                self._safe_write_file(self.iso_staging / "boot" / "grub2" / "config.cfg", config_text)
+                self._safe_write_file(self.iso_staging / "boot" / "grub" / "config.cfg", config_text)
+
             self._safe_write_file(
                 self.iso_staging / "boot" / "grub2" / "grub.cfg",
                 grub.generate_grub_cfg(kernel, initramfs, iso_label, kernel_params)
@@ -353,7 +362,6 @@ class ISOEngine:
         self._create_discinfo(self.iso_staging)
         self._create_treeinfo(self.iso_staging)
 
-        from fedora_builder.core.path_utils import resolve_from_project
         iso_path = resolve_from_project(f"output/{self.output_name}.iso")
         iso_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -523,7 +531,7 @@ class ISOEngine:
         return iso_path
 
     def build_tarball(self) -> Path:
-        out_path = _resolve_from_project(f"output/{self.output_name}.tar.xz")
+        out_path = resolve_from_project(f"output/{self.output_name}.tar.xz")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         if self.mode == "mock":
             out_path.touch()
@@ -539,7 +547,7 @@ class ISOEngine:
         return engine.build_disk_image()
 
     def build_container(self) -> Path:
-        out_path = _resolve_from_project(f"output/{self.output_name}-container.tar")
+        out_path = resolve_from_project(f"output/{self.output_name}-container.tar")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         if self.mode == "mock":
             out_path.touch()
