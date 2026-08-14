@@ -66,6 +66,16 @@ class TestLoadProfile:
         assert isinstance(data, dict)
         assert "releasever" in data
 
+    def test_assemble_build_config_accepts_string_path(self, config_root):
+        loader = ConfigLoader(config_root=config_root)
+        config = loader.assemble_build_config(
+            global_config_path=str(config_root / "global_build.json"),
+            architecture="x86_64",
+            release="fedora-41",
+        )
+        assert isinstance(config, dict)
+        assert "packages" in config
+
     def test_loads_desktop_gnome(self, loader):
         data = loader.load_profile("desktops", "gnome")
         assert isinstance(data, dict)

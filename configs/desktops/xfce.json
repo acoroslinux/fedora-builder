@@ -3,10 +3,7 @@
   "display_name": "Xfce",
   "packages": [
     "lightdm",
-    "lightdm-gtk",
-    "xfce4-terminal",
     "thunar",
-    "thunar-volman",
     "thunar-archive-plugin",
     "xfce4-settings",
     "xfce4-panel",

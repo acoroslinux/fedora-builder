@@ -243,13 +243,18 @@ class ISOEngine:
     def build_iso(self) -> Path:
         self.iso_staging.mkdir(parents=True, exist_ok=True)
 
+        bios_enabled = bool(self.config.get("bios_enabled", True))
+        uefi_enabled = bool(self.config.get("uefi_enabled", True))
+
         for d in [
             self.iso_staging / "images" / "pxeboot",
             self.iso_staging / "LiveOS",
-            self.iso_staging / "isolinux",
             self.iso_staging / "boot" / "grub2",
         ]:
             d.mkdir(parents=True, exist_ok=True)
+
+        if bios_enabled:
+            (self.iso_staging / "isolinux").mkdir(parents=True, exist_ok=True)
 
         kernel, initramfs = self._find_kernel_and_initramfs()
 
@@ -288,43 +293,49 @@ class ISOEngine:
         kernel_params = self._get_kernel_params()
 
         # ---- BIOS grub.cfg + earlyboot.cfg + loopback.cfg ------------------
-        self._safe_write_file(
-            self.iso_staging / "boot" / "grub2" / "grub.cfg",
-            grub.generate_grub_cfg(kernel, initramfs, iso_label, kernel_params)
-        )
-        self._safe_write_file(
-            self.iso_staging / "boot" / "grub2" / "earlyboot.cfg",
-            grub.generate_earlyboot_cfg(iso_label)
-        )
-        self._safe_write_file(
-            self.iso_staging / "boot" / "grub2" / "loopback.cfg",
-            grub.generate_loopback_cfg(kernel, initramfs, iso_label, kernel_params)
-        )
+        if bios_enabled:
+            self._safe_write_file(
+                self.iso_staging / "boot" / "grub2" / "grub.cfg",
+                grub.generate_grub_cfg(kernel, initramfs, iso_label, kernel_params)
+            )
+            self._safe_write_file(
+                self.iso_staging / "boot" / "grub2" / "earlyboot.cfg",
+                grub.generate_earlyboot_cfg(iso_label)
+            )
+            self._safe_write_file(
+                self.iso_staging / "boot" / "grub2" / "loopback.cfg",
+                grub.generate_loopback_cfg(kernel, initramfs, iso_label, kernel_params)
+            )
+
         grub.prepare_files(self.iso_staging, self.target_root)
 
         # ---- GRUB2 BIOS modules (i386-pc) -----------------------------------
-        grub._copy_grub_bios_modules(self.iso_staging, self.target_root)
+        if bios_enabled:
+            grub._copy_grub_bios_modules(self.iso_staging, self.target_root)
 
         # ---- GRUB2 font in boot/grub2/fonts/ --------------------------------
         grub._copy_grub_font(self.iso_staging, self.target_root)
 
         # ---- mbrid (MBR ID stub used by some grub builds) -------------------
-        mbrid_path = self.iso_staging / "boot" / "mbrid"
-        import hashlib, struct
-        mbrid_val = struct.pack('<I', hash(iso_label) & 0xFFFFFFFF)
-        try:
-            mbrid_path.write_bytes(mbrid_val)
-        except Exception:
-            pass
+        if bios_enabled:
+            mbrid_path = self.iso_staging / "boot" / "mbrid"
+            import hashlib, struct
+            mbrid_val = struct.pack('<I', hash(iso_label) & 0xFFFFFFFF)
+            try:
+                mbrid_path.write_bytes(mbrid_val)
+            except Exception:
+                pass
 
         # ---- syslinux for BIOS el-torito boot --------------------------------
-        self._safe_write_file(
-            self.iso_staging / "isolinux" / "isolinux.cfg",
-            grub.generate_isolinux_cfg(kernel, initramfs, iso_label, kernel_params)
-        )
-            
-        self._copy_syslinux_binaries()
-        grub.generate_efiboot_img(self.iso_staging, self.target_root)
+        if bios_enabled:
+            self._safe_write_file(
+                self.iso_staging / "isolinux" / "isolinux.cfg",
+                grub.generate_isolinux_cfg(kernel, initramfs, iso_label, kernel_params)
+            )
+            self._copy_syslinux_binaries()
+
+        if uefi_enabled:
+            grub.generate_efiboot_img(self.iso_staging, self.target_root)
 
         self._create_discinfo(self.iso_staging)
         self._create_treeinfo(self.iso_staging)
@@ -352,7 +363,7 @@ class ISOEngine:
             if not grub_i386_pc.exists() and hasattr(self.toolchain, "build_host_dir"):
                 grub_i386_pc = self.toolchain.build_host_dir / "usr" / "lib" / "grub" / "i386-pc"
 
-            if grub_i386_pc.exists():
+            if bios_enabled and grub_i386_pc.exists():
                 try:
                     self.toolchain.run_tool(
                         "grub2-mkimage",
@@ -368,8 +379,10 @@ class ISOEngine:
                 except Exception as e:
                     logger.warning(f"grub2-mkimage failed ({e}), falling back to isolinux for BIOS boot")
                     eltorito_img = None
-            else:
+            elif bios_enabled:
                 logger.warning("grub2 i386-pc modules not found — skipping eltorito.img generation")
+                eltorito_img = None
+            else:
                 eltorito_img = None
 
             # --- Step 2: Locate boot_hybrid.img (MBR for hybrid ISO) ----------
@@ -389,22 +402,19 @@ class ISOEngine:
             # --- Step 3: Build ISO with xorrisofs (lorax-style hybrid GPT) ----
             # lorax uses xorrisofs with appended GPT partition for UEFI,
             # rather than a classic El Torito EFI entry.
-            if eltorito_img and eltorito_img.exists() and mbr_img:
+            if bios_enabled and uefi_enabled and eltorito_img and eltorito_img.exists() and mbr_img:
                 xorriso_args = [
                     "-as", "mkisofs",
                     "-V", iso_label,
                     "-rock",
                     "-joliet",
-                    # Hybrid MBR (grub2 boot_hybrid.img)
                     "--grub2-mbr", str(mbr_img),
                     "-partition_offset", "16",
                     "-appended_part_as_gpt",
-                    # Append efiboot.img as a GPT partition (EFI System Partition)
                     "-append_partition", "2",
                     "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
                     str(self.iso_staging / "images" / "efiboot.img"),
                     "-iso_mbr_part_type", "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7",
-                    # BIOS El Torito (grub2 eltorito image)
                     "-c", "boot.cat",
                     "--boot-catalog-hide",
                     "-b", "images/eltorito.img",
@@ -412,11 +422,9 @@ class ISOEngine:
                     "-boot-load-size", "4",
                     "-boot-info-table",
                     "--grub2-boot-info",
-                    # UEFI (appended GPT partition reference)
                     "-eltorito-alt-boot",
                     "-e", "--interval:appended_partition_2:all::",
                     "-no-emul-boot",
-                    # Graft points (lorax-style explicit file layout)
                     "-graft-points",
                     f"images/pxeboot={self.iso_staging / 'images' / 'pxeboot'}",
                     f"LiveOS={self.iso_staging / 'LiveOS'}",
@@ -427,9 +435,8 @@ class ISOEngine:
                     f"EFI/fedora={self.iso_staging / 'EFI' / 'fedora'}",
                     f"isolinux={self.iso_staging / 'isolinux'}",
                 ]
-            else:
-                # Fallback: classic El Torito with isolinux (no hybrid GPT)
-                logger.warning("Falling back to classic isolinux El Torito (no grub2-mkimage available)")
+            elif bios_enabled:
+                logger.warning("Falling back to classic isolinux El Torito")
                 xorriso_args = [
                     "-as", "mkisofs",
                     "-V", iso_label,
@@ -446,13 +453,32 @@ class ISOEngine:
                     "-o", str(iso_path),
                     str(self.iso_staging),
                 ]
+            elif uefi_enabled:
+                logger.info("UEFI-only build: generating ISO with EFI boot image only")
+                xorriso_args = [
+                    "-as", "mkisofs",
+                    "-V", iso_label,
+                    "-rock",
+                    "-joliet",
+                    "-eltorito-alt-boot",
+                    "-e", "images/efiboot.img",
+                    "-no-emul-boot",
+                    "-o", str(iso_path),
+                    str(self.iso_staging),
+                ]
+            else:
+                logger.warning("No boot path enabled; creating empty ISO stub")
+                xorriso_args = [
+                    "-as", "mkisofs",
+                    "-V", iso_label,
+                    "-rock",
+                    "-joliet",
+                    "-o", str(iso_path),
+                    str(self.iso_staging),
+                ]
 
             if "-graft-points" in xorriso_args:
-                # When using graft-points, output goes at the end
                 xorriso_args += ["-o", str(iso_path)]
-            else:
-                # Fallback already has -o inline
-                pass
 
             self.toolchain.run_tool("xorriso", xorriso_args)
             self._generate_checksums(iso_path)

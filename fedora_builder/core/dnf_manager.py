@@ -253,9 +253,11 @@ class DNFManager:
             return
         if self.chroot.mode == "mock":
             return
-        # "--allowerasing" must come after the "install" command: dnf5 rejects it
-        # as a global option and requires it to be placed after the subcommand.
-        args = self._get_install_dnf_args() + ["-y", "install", "--allowerasing"] + real_pkgs
+        # "--allowerasing" and "--skip-unavailable" must come after the "install"
+        # subcommand: dnf5 rejects them as global options and requires them to be
+        # placed after the command. This allows builds to continue when optional
+        # packages are not present in the target release or repo set.
+        args = self._get_install_dnf_args() + ["-y", "install", "--allowerasing", "--skip-unavailable"] + real_pkgs
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Package installation failed")
@@ -266,9 +268,10 @@ class DNFManager:
         formatted_groups = [g if g.startswith("@") else f"@{g}" for g in groups]
         if self.chroot.mode == "mock":
             return
-        # "--allowerasing" must come after the "install" command: dnf5 rejects it
-        # as a global option and requires it to be placed after the subcommand.
-        args = self._get_install_dnf_args() + ["-y", "install", "--allowerasing"] + formatted_groups
+        # "--allowerasing" and "--skip-unavailable" must come after the "install"
+        # subcommand: dnf5 rejects them as global options and requires them to be
+        # placed after the command. This allows optional groups to be skipped cleanly.
+        args = self._get_install_dnf_args() + ["-y", "install", "--allowerasing", "--skip-unavailable"] + formatted_groups
         res = self._run_dnf(args)
         if res.returncode != 0:
             raise DNFManagerError("Group installation failed")

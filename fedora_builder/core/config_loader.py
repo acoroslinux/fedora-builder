@@ -46,7 +46,7 @@ class ConfigLoader:
 
     def assemble_build_config(
         self,
-        global_config_path: Path,
+        global_config_path: Path | str,
         architecture: str,
         release: str,
         desktop: Optional[str] = None,
@@ -58,6 +58,8 @@ class ConfigLoader:
         repo_profiles: Optional[List[str]] = None,
         live_profile: Optional[str] = None,
     ) -> Dict[str, Any]:
+
+        global_config_path = Path(global_config_path) if isinstance(global_config_path, str) else global_config_path
 
         config = {
             "packages": [],

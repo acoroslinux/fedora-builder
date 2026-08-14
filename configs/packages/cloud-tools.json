@@ -5,7 +5,6 @@
     "docker-compose",
     "kubectl",
     "helm",
-    "terraform",
     "awscli2"
   ]
 }

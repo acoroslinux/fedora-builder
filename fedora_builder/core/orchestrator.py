@@ -96,7 +96,38 @@ class BuildOrchestrator:
             "basearch": self.arch,
             "with_flathub": self.with_flathub,
             "with_zram": self.with_zram,
+            "with_calamares": self.with_calamares,
         }
+        if self.live_user is not None:
+            self.config["live_user"] = self.live_user
+        if self.live_groups:
+            self.config["live_groups"] = list(self.live_groups)
+
+    def _normalize_runtime_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = dict(config)
+
+        system_cfg = normalized.get("system") if isinstance(normalized.get("system"), dict) else {}
+        boot_cfg = normalized.get("boot") if isinstance(normalized.get("boot"), dict) else {}
+
+        for key in ("hostname", "locale", "timezone", "keymap", "selinux_mode", "dnf_cache"):
+            if key in system_cfg and key not in normalized:
+                normalized[key] = system_cfg[key]
+
+        for key, value in boot_cfg.items():
+            if key not in normalized:
+                normalized[key] = value
+
+        if isinstance(normalized.get("live_user"), dict):
+            live_user = normalized["live_user"]
+            if "name" in live_user and "live_user" not in normalized:
+                normalized["live_user"] = live_user["name"]
+            if "groups" in live_user and "live_groups" not in normalized:
+                normalized["live_groups"] = list(live_user["groups"])
+
+        if isinstance(normalized.get("live_groups"), str):
+            normalized["live_groups"] = [g.strip() for g in normalized["live_groups"].split(",") if g.strip()]
+
+        return normalized
 
     def _filter_available_dracut_modules(self, modules: List[str], rootfs: Optional[Path] = None) -> List[str]:
         if rootfs is None:
@@ -167,6 +198,7 @@ class BuildOrchestrator:
             repo_profiles=self.repo_profiles,
             live_profile=self.live_profile,
         )
+        config = self._normalize_runtime_config({**config, **self.config})
         ks_mgr = KickstartManager(config)
         name = output_name or f"fedora-{self.arch}"
         ks_path = resolve_from_project("output") / f"{name}.ks"
@@ -200,7 +232,7 @@ class BuildOrchestrator:
             repo_profiles=self.repo_profiles,
             live_profile=self.live_profile,
         )
-        self.config.update(assembled_config)
+        self.config = self._normalize_runtime_config({**assembled_config, **self.config})
         cache_root = resolve_cache_root(self.config)
         dnf_cache_dir = package_cache_dir(
             self.config,

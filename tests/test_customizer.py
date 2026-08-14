@@ -29,3 +29,16 @@ def test_configure_anaconda_writes_launcher_and_service(tmp_path):
     assert symlink.is_symlink()
     assert "--text" in launcher.read_text()
     assert "grep -qw 'inst.text' /proc/cmdline" in launcher.read_text()
+
+
+def test_setup_live_users_accepts_string_group_list(tmp_path):
+    customizer = SystemCustomizer(
+        FakeChroot(tmp_path),
+        {"live_user": "demo", "live_groups": "wheel,audio"},
+    )
+
+    customizer.setup_live_users()
+
+    sudoers = tmp_path / "etc" / "sudoers.d" / "wheel_nopasswd"
+    assert sudoers.exists()
+    assert "%wheel ALL=(ALL) NOPASSWD: ALL" in sudoers.read_text()

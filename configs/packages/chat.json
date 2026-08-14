@@ -1,7 +1,6 @@
 {
   "packages": [
     "telegram-desktop",
-    "hexchat",
-    "element-desktop"
+    "hexchat"
   ]
 }

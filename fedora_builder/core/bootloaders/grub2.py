@@ -355,6 +355,8 @@ class Grub2Bootloader:
         efi_fed_dir = iso_staging / "EFI" / "fedora"
         efi_fed_dir.mkdir(parents=True, exist_ok=True)
 
+        secure_boot = bool(self.config.get("secure_boot", True))
+
         # ---- GRUB2 font in EFI -----------------------------------------------
         efi_fonts = efi_boot_dir / "fonts"
         efi_fonts.mkdir(parents=True, exist_ok=True)
@@ -365,12 +367,14 @@ class Grub2Bootloader:
         # ---- Locate EFI binaries --------------------------------------------
         efi_bins = self._find_efi_binaries(effective_root)
 
-        # Copy to EFI/BOOT (standard names required by UEFI spec)
-        # shimx64 → BOOTX64.EFI  (or grubx64 if no shim)
-        if efi_bins["shim_x64"]:
-            shutil.copy2(efi_bins["shim_x64"], efi_boot_dir / "BOOTX64.EFI")
-        
+        # Copy to EFI/BOOT (standard names required by UEFI spec).
+        # Secure Boot uses shim as BOOTX64.EFI. If Secure Boot is disabled,
+        # the firmware should boot grubx64.efi directly as the default entry.
         grub_x64_src = efi_bins.get("gcd_x64") or efi_bins.get("grub_x64")
+        if secure_boot and efi_bins["shim_x64"]:
+            shutil.copy2(efi_bins["shim_x64"], efi_boot_dir / "BOOTX64.EFI")
+        elif grub_x64_src:
+            shutil.copy2(grub_x64_src, efi_boot_dir / "BOOTX64.EFI")
         if grub_x64_src:
             shutil.copy2(grub_x64_src, efi_boot_dir / "grubx64.efi")
         if efi_bins["mm_x64"]:
@@ -379,8 +383,11 @@ class Grub2Bootloader:
             shutil.copy2(efi_bins["fb_x64"], efi_boot_dir / "fbx64.efi")
 
         # 32-bit UEFI (tablets/older firmware)
-        if efi_bins["shim_ia32"]:
+        if secure_boot and efi_bins["shim_ia32"]:
             shutil.copy2(efi_bins["shim_ia32"], efi_boot_dir / "BOOTIA32.EFI")
+        elif efi_bins.get("grub_ia32") or efi_bins.get("gcd_ia32"):
+            grub_ia32_src = efi_bins.get("gcd_ia32") or efi_bins.get("grub_ia32")
+            shutil.copy2(grub_ia32_src, efi_boot_dir / "BOOTIA32.EFI")
         
         grub_ia32_src = efi_bins.get("gcd_ia32") or efi_bins.get("grub_ia32")
         if grub_ia32_src:

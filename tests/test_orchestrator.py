@@ -7,10 +7,12 @@ Requires no root privileges or network access.
 
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from fedora_builder.core.orchestrator import BuildOrchestrator, BuildOrchestratorError
+from fedora_builder.core.iso_engine import ISOEngine
 from fedora_builder.core.path_utils import resolve_from_project
 
 
@@ -74,9 +76,78 @@ class TestOrchestratorConstruction:
         orch = make_orchestrator(copr_repos=["arivenitez/calamares"])
         assert "arivenitez/calamares" in orch.copr_repos
 
+    def test_construction_propagates_live_and_feature_overrides_into_config(self):
+        orch = make_orchestrator(
+            live_user="demo",
+            live_groups=["wheel", "audio"],
+            with_calamares=True,
+            with_flathub=True,
+            with_zram=False,
+        )
+        assert orch.config["live_user"] == "demo"
+        assert orch.config["live_groups"] == ["wheel", "audio"]
+        assert orch.config["with_calamares"] is True
+        assert orch.config["with_flathub"] is True
+        assert orch.config["with_zram"] is False
+
+    def test_runtime_config_promotes_nested_system_defaults(self):
+        orch = make_orchestrator()
+        config = {
+            "system": {"hostname": "fedora-live", "locale": "pt_PT.UTF-8"},
+            "boot": {"timeout": 15},
+            "live_user": {"name": "demo", "groups": ["wheel", "audio"]},
+        }
+        normalized = orch._normalize_runtime_config(config)
+        assert normalized["hostname"] == "fedora-live"
+        assert normalized["locale"] == "pt_PT.UTF-8"
+        assert normalized["timeout"] == 15
+        assert normalized["live_user"]["name"] == "demo"
+
     def test_server_variant_adds_anaconda_profile(self):
         orch = make_orchestrator(variant="server")
         assert "anaconda" in orch.package_profiles
+
+    def test_iso_engine_respects_bios_only_bootloader_profile(self, tmp_path):
+        rootfs = tmp_path / "rootfs"
+        rootfs.mkdir()
+        (rootfs / "boot").mkdir()
+        (rootfs / "boot" / "vmlinuz").write_text("kernel")
+        (rootfs / "boot" / "initramfs.img").write_text("initrd")
+
+        iso_engine = ISOEngine(
+            workdir=tmp_path,
+            target_root=rootfs,
+            output_name="test-iso",
+            config={"bios_enabled": False, "uefi_enabled": True, "basearch": "x86_64", "boot": {"kernel_params": "quiet rhgb"}},
+            mode="mock",
+            toolchain=MagicMock(mode="mock"),
+        )
+
+        iso_path = iso_engine.build_iso()
+        assert iso_path.exists()
+        assert not (tmp_path / "iso_root" / "isolinux").exists()
+
+    def test_grub_efiboot_skips_shim_when_secure_boot_disabled(self, tmp_path):
+        rootfs = tmp_path / "rootfs"
+        efi_dir = rootfs / "boot" / "efi" / "EFI"
+        efi_dir.mkdir(parents=True)
+        (efi_dir / "BOOT").mkdir()
+        (efi_dir / "BOOT" / "grubx64.efi").write_bytes(b"grub")
+        (efi_dir / "BOOT" / "shimx64.efi").write_bytes(b"shim")
+
+        iso_root = tmp_path / "iso_root"
+        iso_root.mkdir()
+
+        grub = MagicMock()
+        boot = __import__("fedora_builder.core.bootloaders.grub2", fromlist=["Grub2Bootloader"]).Grub2Bootloader
+        cfg = {"secure_boot": False, "system": {"iso_label": "TESTISO"}, "boot": {"kernel_params": "quiet rhgb"}}
+        loader = boot(cfg, "x86_64", toolchain=None)
+        img = loader.generate_efiboot_img(iso_root, rootfs)
+        assert img.exists()
+        assert (iso_root / "EFI" / "BOOT" / "grubx64.efi").exists()
+        assert (iso_root / "EFI" / "BOOT" / "BOOTX64.EFI").exists()
+        assert (iso_root / "EFI" / "BOOT" / "BOOTX64.EFI").read_bytes() == b"grub"
+        assert not (iso_root / "EFI" / "BOOT" / "BOOTX64.EFI").read_bytes() == b"shim"
 
     def test_live_variant_dracut_uses_live_modules(self):
         orch = make_orchestrator(variant="live")

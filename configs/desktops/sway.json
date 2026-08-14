@@ -3,16 +3,10 @@
   "display_name": "Sway",
   "packages": [
     "sway",
-    "waybar",
-    "swaylock",
-    "swayidle",
     "foot",
     "mako",
     "wofi",
-    "grim",
-    "slurp",
     "xdg-desktop-portal-wlr",
-    "wl-clipboard",
     "sddm"
   ],
   "groups": [],

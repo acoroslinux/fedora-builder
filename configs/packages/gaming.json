@@ -1,8 +1,5 @@
 {
   "packages": [
-    "steam",
-    "lutris",
-    "wine",
     "gamemode",
     "mangohud"
   ],

@@ -3,7 +3,6 @@
   "display_name": "Hyprland",
   "packages": [
     "hyprland",
-    "waybar",
     "hyprpaper",
     "hypridle",
     "hyprlock",
@@ -11,10 +10,7 @@
     "wofi",
     "dunst",
     "xdg-desktop-portal-hyprland",
-    "sddm",
-    "grim",
-    "slurp",
-    "wl-clipboard"
+    "sddm"
   ],
   "groups": [],
   "display_manager": "sddm",

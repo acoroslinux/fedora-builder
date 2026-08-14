@@ -1,6 +1,5 @@
 {
   "packages": [
-    "kdenlive",
     "audacity",
     "obs-studio",
     "handbrake"

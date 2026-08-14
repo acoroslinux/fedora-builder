@@ -17,17 +17,23 @@ class SystemCustomizer:
         live_user = self.config.get("live_user", "liveuser")
         if isinstance(live_user, dict):
             live_user = live_user.get("name", "liveuser")
+
         groups = self.config.get("live_groups", ["wheel"])
+        if isinstance(groups, str):
+            groups = [g.strip() for g in groups.split(",") if g.strip()]
+        elif not isinstance(groups, list):
+            groups = [str(groups)]
+
         if self.chroot.mode == "mock":
             return
-            
+
         groups_str = ",".join(groups)
         try:
             self.chroot.run_in_chroot(["useradd", "-m", "-G", groups_str, str(live_user)], check=False)
             self.chroot.run_in_chroot(f"echo '{live_user}:live' | chpasswd", check=False)
         except Exception:
             pass
-        
+
         sudoers_file = self.target_root / "etc" / "sudoers.d" / "wheel_nopasswd"
         sudoers_file.parent.mkdir(parents=True, exist_ok=True)
         with open(sudoers_file, "w") as f:

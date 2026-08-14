@@ -1,14 +1,5 @@
 {
   "packages": [
-    "waybar",
-    "rofi-wayland",
-    "swaylock",
-    "swayidle",
-    "mako",
-    "grim",
-    "slurp",
-    "wl-clipboard",
-    "swaybg",
-    "wdisplays"
+    "mako"
   ]
 }
