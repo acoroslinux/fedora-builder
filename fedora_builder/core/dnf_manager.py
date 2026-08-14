@@ -186,6 +186,10 @@ class DNFManager:
                 logger.debug("Mock rootfs directory creation ignored due to root permissions.")
             return
 
+        if (self.target_root / "etc" / "os-release").exists() or (self.target_root / "usr" / "bin" / "bash").exists():
+            logger.info("⚡ Target rootfs already contains base system, reusing existing tree.")
+            return
+
         self.target_root.mkdir(parents=True, exist_ok=True)
         (self.target_root / "var" / "log").mkdir(parents=True, exist_ok=True)
 

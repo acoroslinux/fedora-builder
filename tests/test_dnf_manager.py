@@ -117,6 +117,16 @@ class TestBootstrapRootfs:
         mgr = DNFManager(chroot=chroot, config=mock_config)
         mgr.bootstrap_rootfs(releasever="41", basearch="aarch64")
 
+    def test_bootstrap_skips_if_rootfs_already_populated(self, tmp_path, mock_config):
+        rootfs = tmp_path / "rootfs_populated"
+        (rootfs / "etc").mkdir(parents=True)
+        (rootfs / "etc" / "os-release").touch()
+        chroot = ChrootManager(target_root=rootfs, mode="real", arch="x86_64")
+        mgr = DNFManager(chroot=chroot, config=mock_config)
+        mgr._run_dnf = MagicMock()
+        mgr.bootstrap_rootfs(releasever="41", basearch="x86_64")
+        mgr._run_dnf.assert_not_called()
+
 
 # ── test_install_packages ─────────────────────────────────────────────────────────
 
