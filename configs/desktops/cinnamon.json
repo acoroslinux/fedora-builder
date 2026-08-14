@@ -3,6 +3,7 @@
   "display_name": "Cinnamon",
   "packages": [
     "lightdm",
+    "lightdm-gtk",
     "cinnamon",
     "cinnamon-control-center",
     "nemo",

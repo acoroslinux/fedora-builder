@@ -5,6 +5,7 @@
     "i3",
     "i3lock",
     "lightdm",
+    "lightdm-gtk",
     "polybar",
     "rofi",
     "rxvt-unicode",

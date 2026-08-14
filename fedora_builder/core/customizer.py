@@ -50,6 +50,22 @@ class SystemCustomizer:
         with open(self.target_root / "etc" / "locale.conf", "w") as f:
             f.write(f"LANG={locale}\n")
 
+        # Set default systemd target: graphical.target for desktop/live, multi-user for server
+        dm = self.config.get("display_manager") or self.config.get("desktop")
+        target = "graphical.target" if dm else "multi-user.target"
+        try:
+            self.chroot.run_in_chroot(["systemctl", "set-default", target], check=False)
+        except Exception:
+            pass
+
+        # Disable/mask services that block boot on Live ISOs
+        for s in ["NetworkManager-wait-online.service", "plymouth-quit-wait.service"]:
+            try:
+                self.chroot.run_in_chroot(["systemctl", "disable", s], check=False)
+                self.chroot.run_in_chroot(["systemctl", "mask", s], check=False)
+            except Exception:
+                pass
+
     def setup_services(self):
         if self.chroot.mode == "mock":
             return
@@ -131,6 +147,7 @@ class SystemCustomizer:
             content += f"autologin-session={session}\n"
         content += (
             "user-session=default\n"
+            "greeter-session=lightdm-gtk-greeter\n"
             "greeter-show-manual-login=false\n"
             "greeter-hide-users=false\n\n"
             "[XDMCPServer]\n\n"

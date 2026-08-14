@@ -3,6 +3,7 @@
   "display_name": "MATE",
   "packages": [
     "lightdm",
+    "lightdm-gtk",
     "mate-terminal",
     "caja",
     "mate-control-center",
