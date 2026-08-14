@@ -1,10 +1,5 @@
 {
   "enable": [
     "upower"
-  ],
-  "disable": [
-    "libvirtd",
-    "fwupd",
-    "pcscd"
   ]
 }
