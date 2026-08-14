@@ -149,6 +149,25 @@ class TestOrchestratorConstruction:
         assert (iso_root / "EFI" / "BOOT" / "BOOTX64.EFI").read_bytes() == b"grub"
         assert not (iso_root / "EFI" / "BOOT" / "BOOTX64.EFI").read_bytes() == b"shim"
 
+    def test_iso_engine_retries_classic_xorriso_when_hybrid_layout_fails(self, tmp_path):
+        rootfs = tmp_path / "rootfs"
+        rootfs.mkdir()
+        toolchain = MagicMock()
+        toolchain.run_tool.side_effect = [Exception("hybrid failed"), None]
+        iso_engine = ISOEngine(
+            workdir=tmp_path,
+            target_root=rootfs,
+            output_name="test-iso",
+            config={"bios_enabled": True, "uefi_enabled": True, "basearch": "x86_64", "boot": {"kernel_params": "quiet rhgb"}},
+            mode="real",
+            toolchain=toolchain,
+        )
+
+        iso_engine._run_xorriso(["--grub2-mbr"], ["-eltorito-boot", "isolinux/isolinux.bin"])
+
+        assert toolchain.run_tool.call_count == 2
+        assert toolchain.run_tool.call_args_list[1].args[1] == ["-eltorito-boot", "isolinux/isolinux.bin"]
+
     def test_live_variant_dracut_uses_live_modules(self):
         orch = make_orchestrator(variant="live")
         orch.config["live_media"] = True

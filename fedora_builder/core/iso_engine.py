@@ -240,6 +240,19 @@ class ISOEngine:
             (isolinux_target / "isolinux.bin").touch()
             (isolinux_target / "boot.cat").touch()
 
+    def _run_xorriso(self, primary_args: list[str], fallback_args: list[str] | None = None):
+        try:
+            self.toolchain.run_tool("xorriso", primary_args)
+            return
+        except Exception as exc:
+            if fallback_args is None:
+                raise
+            logger.warning(
+                "Hybrid xorriso layout failed (%s); retrying with classic BIOS/UEFI fallback.",
+                exc,
+            )
+            self.toolchain.run_tool("xorriso", fallback_args)
+
     def build_iso(self) -> Path:
         self.iso_staging.mkdir(parents=True, exist_ok=True)
 
@@ -399,42 +412,62 @@ class ISOEngine:
                     mbr_img = c
                     break
 
-            # --- Step 3: Build ISO with xorrisofs (lorax-style hybrid GPT) ----
-            # lorax uses xorrisofs with appended GPT partition for UEFI,
-            # rather than a classic El Torito EFI entry.
-            if bios_enabled and uefi_enabled and eltorito_img and eltorito_img.exists() and mbr_img:
-                xorriso_args = [
+            # --- Step 3: Build ISO with xorrisofs ---------------------------------
+            # Prefer the classic El Torito + EFI image layout for compatibility and
+            # keep the hybrid GPT layout as a fallback only when required.
+            if bios_enabled and uefi_enabled:
+                classic_args = [
                     "-as", "mkisofs",
                     "-V", iso_label,
                     "-rock",
                     "-joliet",
-                    "--grub2-mbr", str(mbr_img),
-                    "-partition_offset", "16",
-                    "-appended_part_as_gpt",
-                    "-append_partition", "2",
-                    "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
-                    str(self.iso_staging / "images" / "efiboot.img"),
-                    "-iso_mbr_part_type", "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7",
-                    "-c", "boot.cat",
-                    "--boot-catalog-hide",
-                    "-b", "images/eltorito.img",
+                    "-eltorito-boot", "isolinux/isolinux.bin",
+                    "-eltorito-catalog", "isolinux/boot.cat",
                     "-no-emul-boot",
                     "-boot-load-size", "4",
                     "-boot-info-table",
-                    "--grub2-boot-info",
                     "-eltorito-alt-boot",
-                    "-e", "--interval:appended_partition_2:all::",
+                    "-e", "images/efiboot.img",
                     "-no-emul-boot",
-                    "-graft-points",
-                    f"images/pxeboot={self.iso_staging / 'images' / 'pxeboot'}",
-                    f"LiveOS={self.iso_staging / 'LiveOS'}",
-                    f"boot/grub2={self.iso_staging / 'boot' / 'grub2'}",
-                    f"boot/grub2/i386-pc={grub_i386_pc}",
-                    f"images/eltorito.img={eltorito_img}",
-                    f"EFI/BOOT={self.iso_staging / 'EFI' / 'BOOT'}",
-                    f"EFI/fedora={self.iso_staging / 'EFI' / 'fedora'}",
-                    f"isolinux={self.iso_staging / 'isolinux'}",
+                    "-o", str(iso_path),
+                    str(self.iso_staging),
                 ]
+                hybrid_args = None
+                if eltorito_img and eltorito_img.exists() and mbr_img:
+                    hybrid_args = [
+                        "-as", "mkisofs",
+                        "-V", iso_label,
+                        "-rock",
+                        "-joliet",
+                        "--grub2-mbr", str(mbr_img),
+                        "-partition_offset", "16",
+                        "-appended_part_as_gpt",
+                        "-append_partition", "2",
+                        "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
+                        str(self.iso_staging / "images" / "efiboot.img"),
+                        "-iso_mbr_part_type", "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7",
+                        "-c", "boot.cat",
+                        "--boot-catalog-hide",
+                        "-b", "images/eltorito.img",
+                        "-no-emul-boot",
+                        "-boot-load-size", "4",
+                        "-boot-info-table",
+                        "--grub2-boot-info",
+                        "-eltorito-alt-boot",
+                        "-e", "--interval:appended_partition_2:all::",
+                        "-no-emul-boot",
+                        "-graft-points",
+                        f"images/pxeboot={self.iso_staging / 'images' / 'pxeboot'}",
+                        f"LiveOS={self.iso_staging / 'LiveOS'}",
+                        f"boot/grub2={self.iso_staging / 'boot' / 'grub2'}",
+                        f"boot/grub2/i386-pc={grub_i386_pc}",
+                        f"images/eltorito.img={eltorito_img}",
+                        f"EFI/BOOT={self.iso_staging / 'EFI' / 'BOOT'}",
+                        f"EFI/fedora={self.iso_staging / 'EFI' / 'fedora'}",
+                        f"isolinux={self.iso_staging / 'isolinux'}",
+                        "-o", str(iso_path),
+                    ]
+                self._run_xorriso(classic_args, hybrid_args)
             elif bios_enabled:
                 logger.warning("Falling back to classic isolinux El Torito")
                 xorriso_args = [
@@ -453,6 +486,7 @@ class ISOEngine:
                     "-o", str(iso_path),
                     str(self.iso_staging),
                 ]
+                self.toolchain.run_tool("xorriso", xorriso_args)
             elif uefi_enabled:
                 logger.info("UEFI-only build: generating ISO with EFI boot image only")
                 xorriso_args = [
@@ -466,6 +500,7 @@ class ISOEngine:
                     "-o", str(iso_path),
                     str(self.iso_staging),
                 ]
+                self.toolchain.run_tool("xorriso", xorriso_args)
             else:
                 logger.warning("No boot path enabled; creating empty ISO stub")
                 xorriso_args = [
@@ -476,11 +511,8 @@ class ISOEngine:
                     "-o", str(iso_path),
                     str(self.iso_staging),
                 ]
+                self.toolchain.run_tool("xorriso", xorriso_args)
 
-            if "-graft-points" in xorriso_args:
-                xorriso_args += ["-o", str(iso_path)]
-
-            self.toolchain.run_tool("xorriso", xorriso_args)
             self._generate_checksums(iso_path)
             
         return iso_path
