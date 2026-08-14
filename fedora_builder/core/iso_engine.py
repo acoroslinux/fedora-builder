@@ -418,6 +418,7 @@ class ISOEngine:
             if bios_enabled and uefi_enabled:
                 classic_args = [
                     "-as", "mkisofs",
+                    "-iso-level", "3",
                     "-V", iso_label,
                     "-rock",
                     "-joliet",
@@ -436,6 +437,7 @@ class ISOEngine:
                 if eltorito_img and eltorito_img.exists() and mbr_img:
                     hybrid_args = [
                         "-as", "mkisofs",
+                        "-iso-level", "3",
                         "-V", iso_label,
                         "-rock",
                         "-joliet",
@@ -472,6 +474,7 @@ class ISOEngine:
                 logger.warning("Falling back to classic isolinux El Torito")
                 xorriso_args = [
                     "-as", "mkisofs",
+                    "-iso-level", "3",
                     "-V", iso_label,
                     "-rock",
                     "-joliet",
@@ -491,6 +494,7 @@ class ISOEngine:
                 logger.info("UEFI-only build: generating ISO with EFI boot image only")
                 xorriso_args = [
                     "-as", "mkisofs",
+                    "-iso-level", "3",
                     "-V", iso_label,
                     "-rock",
                     "-joliet",
@@ -505,6 +509,7 @@ class ISOEngine:
                 logger.warning("No boot path enabled; creating empty ISO stub")
                 xorriso_args = [
                     "-as", "mkisofs",
+                    "-iso-level", "3",
                     "-V", iso_label,
                     "-rock",
                     "-joliet",
