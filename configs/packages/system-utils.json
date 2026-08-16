@@ -14,6 +14,9 @@
     "p7zip-plugins",
     "rsync",
     "tree",
-    "lsof"
+    "lsof",
+    "avahi",
+    "samba",
+    "openssh-server"
   ]
 }

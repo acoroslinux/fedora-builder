@@ -79,6 +79,26 @@ class SystemCustomizer:
         else:
             return
 
+        auto_services = ["NetworkManager", "dbus", "avahi-daemon", "smb", "nmb", "sshd"]
+        dm = self.config.get("display_manager")
+        if not dm:
+            if (self.target_root / "usr" / "bin" / "sddm").exists():
+                dm = "sddm"
+            elif (self.target_root / "usr" / "sbin" / "gdm").exists() or (self.target_root / "usr" / "bin" / "gdm").exists():
+                dm = "gdm"
+            elif (self.target_root / "usr" / "sbin" / "lightdm").exists() or (self.target_root / "usr" / "bin" / "lightdm").exists():
+                dm = "lightdm"
+        if dm:
+            auto_services.append("display-manager")
+
+        for auto_svc in auto_services:
+            if auto_svc not in enable:
+                for search_dir in ["usr/lib/systemd/system", "lib/systemd/system"]:
+                    unit = self.target_root / search_dir / f"{auto_svc}.service"
+                    if unit.exists():
+                        enable.append(auto_svc)
+                        break
+
         for svc in enable:
             try:
                 self.chroot.run_in_chroot(["systemctl", "enable", str(svc)], check=False)
