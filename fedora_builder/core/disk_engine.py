@@ -35,17 +35,25 @@ class DiskEngine:
         efi_img = self.workdir / "efi.img"
         root_img = self.workdir / "root.img"
         
-        logger.info(f"Generating EXT4 root filesystem ({rootfs_size} MB)...")
+        logger.info(f"Generating {self.config.get('fs_type', 'ext4').upper()} root filesystem ({rootfs_size} MB)...")
         # Ensure target root has autorelabel
         (self.target_root / ".autorelabel").touch()
         
-        # Build ext4 root image directly from directory
+        fs_type = self.config.get("fs_type", "ext4")
+        
+        # Build root image directly from directory
         if self.toolchain:
             self.toolchain.run_in_build_host(["truncate", "-s", f"{rootfs_size}M", str(root_img)])
-            self.toolchain.run_in_build_host(["mke2fs", "-t", "ext4", "-L", "ROOTFS", "-d", str(self.target_root), str(root_img)])
+            if fs_type == "btrfs":
+                self.toolchain.run_in_build_host(["mkfs.btrfs", "-r", str(self.target_root), str(root_img)])
+            else:
+                self.toolchain.run_in_build_host(["mke2fs", "-t", "ext4", "-L", "ROOTFS", "-d", str(self.target_root), str(root_img)])
         else:
             subprocess.run(["truncate", "-s", f"{rootfs_size}M", str(root_img)], check=True)
-            subprocess.run(["mke2fs", "-t", "ext4", "-L", "ROOTFS", "-d", str(self.target_root), str(root_img)], check=True)
+            if fs_type == "btrfs":
+                subprocess.run(["mkfs.btrfs", "-r", str(self.target_root), str(root_img)], check=True)
+            else:
+                subprocess.run(["mke2fs", "-t", "ext4", "-L", "ROOTFS", "-d", str(self.target_root), str(root_img)], check=True)
 
         logger.info(f"Generating FAT32 EFI filesystem ({efi_size} MB)...")
         # Create FAT image
@@ -61,39 +69,66 @@ class DiskEngine:
         efi_boot_dir = self.workdir / "efi_tmp" / "EFI" / "BOOT"
         efi_boot_dir.mkdir(parents=True, exist_ok=True)
         
-        # Look for shim and grub
+        bootloader_type = self.config.get("bootloader", {}).get("type", "grub2-hybrid")
+        
         efi_fed_src = self.target_root / "boot" / "efi" / "EFI" / "fedora"
         efi_boot_src = self.target_root / "boot" / "efi" / "EFI" / "BOOT"
-        
-        if efi_fed_src.exists():
-            shutil.copytree(efi_fed_src, self.workdir / "efi_tmp" / "EFI" / "fedora", dirs_exist_ok=True)
-        if efi_boot_src.exists():
-            shutil.copytree(efi_boot_src, efi_boot_dir, dirs_exist_ok=True)
-            
-        # Ensure BOOTX64.EFI exists
-        bootx64 = efi_boot_dir / "BOOTX64.EFI"
-        if not bootx64.exists():
-            shim = self.workdir / "efi_tmp" / "EFI" / "fedora" / "shimx64.efi"
-            grub = self.workdir / "efi_tmp" / "EFI" / "fedora" / "grubx64.efi"
-            if shim.exists():
-                shutil.copy2(shim, bootx64)
-            elif grub.exists():
-                shutil.copy2(grub, bootx64)
-            if grub.exists():
-                shutil.copy2(grub, efi_boot_dir / "grubx64.efi")
-
-        # Create basic grub.cfg for disk image boot
-        grub_cfg = self.workdir / "efi_tmp" / "EFI" / "fedora" / "grub.cfg"
-        grub_cfg.parent.mkdir(parents=True, exist_ok=True)
-        kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
-        kernel_params = " ".join([p for p in kernel_params.split() if p != "rd.live.image"])
         
         # Find kernel and initramfs inside rootfs /boot
         boot_dir = self.target_root / "boot"
         vmlinuz = next((f.name for f in boot_dir.glob("vmlinuz-*") if not f.name.endswith(".old")), "vmlinuz")
         initrd = next((f.name for f in boot_dir.glob("initramfs-*.img")), "initramfs.img")
         
-        grub_cfg.write_text(f"""
+        kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
+        kernel_params = " ".join([p for p in kernel_params.split() if p != "rd.live.image"])
+        
+        if bootloader_type == "systemd-boot":
+            import shutil
+            # Install systemd-boot
+            sd_boot_src = self.target_root / "usr" / "lib" / "systemd" / "boot" / "efi" / "systemd-bootx64.efi"
+            if sd_boot_src.exists():
+                shutil.copy2(sd_boot_src, efi_boot_dir / "BOOTX64.EFI")
+            
+            # Copy kernel and initrd to ESP (systemd-boot requires them on the same FAT partition)
+            shutil.copy2(boot_dir / vmlinuz, self.workdir / "efi_tmp" / vmlinuz)
+            shutil.copy2(boot_dir / initrd, self.workdir / "efi_tmp" / initrd)
+            
+            # Create loader/loader.conf
+            loader_dir = self.workdir / "efi_tmp" / "loader"
+            loader_dir.mkdir(parents=True, exist_ok=True)
+            (loader_dir / "loader.conf").write_text("default fedora\\ntimeout 3\\n")
+            
+            # Create loader/entries/fedora.conf
+            entries_dir = loader_dir / "entries"
+            entries_dir.mkdir(parents=True, exist_ok=True)
+            (entries_dir / "fedora.conf").write_text(f"""title Fedora Linux
+linux /{vmlinuz}
+initrd /{initrd}
+options root=LABEL=ROOTFS rw {kernel_params}
+""")
+        else:
+            if efi_fed_src.exists():
+                shutil.copytree(efi_fed_src, self.workdir / "efi_tmp" / "EFI" / "fedora", dirs_exist_ok=True)
+            if efi_boot_src.exists():
+                shutil.copytree(efi_boot_src, efi_boot_dir, dirs_exist_ok=True)
+                
+            # Ensure BOOTX64.EFI exists
+            bootx64 = efi_boot_dir / "BOOTX64.EFI"
+            if not bootx64.exists():
+                shim = self.workdir / "efi_tmp" / "EFI" / "fedora" / "shimx64.efi"
+                grub = self.workdir / "efi_tmp" / "EFI" / "fedora" / "grubx64.efi"
+                if shim.exists():
+                    shutil.copy2(shim, bootx64)
+                elif grub.exists():
+                    shutil.copy2(grub, bootx64)
+                if grub.exists():
+                    shutil.copy2(grub, efi_boot_dir / "grubx64.efi")
+
+            # Create basic grub.cfg for disk image boot
+            grub_cfg = self.workdir / "efi_tmp" / "EFI" / "fedora" / "grub.cfg"
+            grub_cfg.parent.mkdir(parents=True, exist_ok=True)
+            
+            grub_cfg.write_text(f"""
 search --no-floppy --set=root --label ROOTFS
 set prefix=($root)/boot/grub2
 
@@ -115,7 +150,7 @@ menuentry "Fedora Linux" {{
             self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mktable", "gpt"])
             self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mkpart", "ESP", "fat32", "1MiB", f"{efi_size+1}MiB"])
             self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "set", "1", "esp", "on"])
-            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mkpart", "primary", "ext4", f"{efi_size+1}MiB", "100%"])
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), f"mkpart", "primary", fs_type, f"{efi_size+1}MiB", "100%"])
             # Inject partitions
             self.toolchain.run_in_build_host(["dd", f"if={efi_img}", f"of={out_path}", "bs=1M", "seek=1", "conv=notrunc", "status=none"])
             self.toolchain.run_in_build_host(["dd", f"if={root_img}", f"of={out_path}", "bs=1M", f"seek={efi_size+1}", "conv=notrunc", "status=none"])
@@ -124,7 +159,7 @@ menuentry "Fedora Linux" {{
             subprocess.run(["parted", "-s", str(out_path), "mktable", "gpt"], check=True)
             subprocess.run(["parted", "-s", str(out_path), "mkpart", "ESP", "fat32", "1MiB", f"{efi_size+1}MiB"], check=True)
             subprocess.run(["parted", "-s", str(out_path), "set", "1", "esp", "on"], check=True)
-            subprocess.run(["parted", "-s", str(out_path), "mkpart", "primary", "ext4", f"{efi_size+1}MiB", "100%"], check=True)
+            subprocess.run(["parted", "-s", str(out_path), f"mkpart", "primary", fs_type, f"{efi_size+1}MiB", "100%"], check=True)
             subprocess.run(["dd", f"if={efi_img}", f"of={out_path}", "bs=1M", "seek=1", "conv=notrunc", "status=none"], check=True)
             subprocess.run(["dd", f"if={root_img}", f"of={out_path}", "bs=1M", f"seek={efi_size+1}", "conv=notrunc", "status=none"], check=True)
 

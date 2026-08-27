@@ -188,6 +188,25 @@ def main():
     )
 
     parser.add_argument(
+        "--cloud-init",
+        action="store_true",
+        help="Include and enable cloud-init for cloud/server provisioning.",
+    )
+
+    parser.add_argument(
+        "--gaming-tweaks",
+        action="store_true",
+        help="Apply aggressive sysctl, CPU governor, and IO performance tweaks.",
+    )
+
+    parser.add_argument(
+        "--fs-type",
+        choices=["ext4", "btrfs"],
+        default="ext4",
+        help="Root filesystem type for disk images. Default: ext4",
+    )
+
+    parser.add_argument(
         "--with-zram",
         action="store_true",
         help="Configure systemd-zram-generator for RAM compressed swap.",
@@ -215,7 +234,7 @@ def main():
         "--bootloader",
         type=str,
         default="grub2-hybrid",
-        help="Bootloader profile (grub2-hybrid, grub2-efi, grub2-bios). Default: grub2-hybrid",
+        help="Bootloader profile (grub2-hybrid, grub2-efi, grub2-bios, systemd-boot). Default: grub2-hybrid",
     )
 
     parser.add_argument(
@@ -404,6 +423,9 @@ def main():
         multimedia_codecs=args.multimedia_codecs,
         with_flathub=args.with_flathub,
         with_zram=args.with_zram,
+        cloud_init=args.cloud_init,
+        gaming_tweaks=args.gaming_tweaks,
+        fs_type=args.fs_type,
     )
 
     # ── --validate mode ─────────────────────────────────────────────────────────
@@ -418,6 +440,9 @@ def main():
             print(f"  Fedora Release      : {summary.get('release', release)}")
             print(f"  Desktop Profile     : {summary.get('desktop', '(none)')}")
             print(f"  Variant             : {summary.get('variant', 'live')}")
+            print(f"  FS Type             : {args.fs_type}")
+            print(f"  Gaming Tweaks       : {'Yes' if args.gaming_tweaks else 'No'}")
+            print(f"  Cloud Init          : {'Yes' if args.cloud_init else 'No'}")
             print(f"  Total Packages      : {summary.get('total_packages', 0)}")
             print(f"  DNF Groups          : {', '.join(summary.get('groups', []))}")
             print(f"  Enabled Services    : {', '.join(summary.get('services', []))}")

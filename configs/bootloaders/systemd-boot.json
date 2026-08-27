@@ -1,0 +1,11 @@
+{
+  "bootloader": {
+    "type": "systemd-boot",
+    "secure_boot": true
+  },
+  "packages": [
+    "systemd-boot-unsigned",
+    "systemd-ukify",
+    "efibootmgr"
+  ]
+}

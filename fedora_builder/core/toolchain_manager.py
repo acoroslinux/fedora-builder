@@ -75,6 +75,7 @@ _BUILD_HOST_PACKAGES = [
     # Disk images
     "parted",
     "e2fsprogs",
+    "btrfs-progs",
     # QEMU for cross-arch
     "qemu-user-static",
     # Utilities

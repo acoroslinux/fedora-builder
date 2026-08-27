@@ -46,6 +46,9 @@ class BuildOrchestrator:
         multimedia_codecs: bool = False,
         with_flathub: bool = False,
         with_zram: bool = False,
+        cloud_init: bool = False,
+        gaming_tweaks: bool = False,
+        fs_type: str = "ext4",
         force_isolated_toolchain: bool = False,
     ):
         self.arch = arch
@@ -73,6 +76,9 @@ class BuildOrchestrator:
         self.multimedia_codecs = multimedia_codecs
         self.with_flathub = with_flathub
         self.with_zram = with_zram
+        self.cloud_init = cloud_init
+        self.gaming_tweaks = gaming_tweaks
+        self.fs_type = fs_type
         self.force_isolated_toolchain = force_isolated_toolchain
 
         if self.variant == "server" and "anaconda" not in self.package_profiles:
@@ -89,6 +95,11 @@ class BuildOrchestrator:
             if "multimedia" not in self.package_profiles:
                 self.package_profiles.append("multimedia")
 
+        if self.cloud_init:
+            if "cloud-init" not in self.package_profiles:
+                # We can dynamically add cloud-init package directly
+                pass
+
         self.workdir = resolve_from_project(f"workdir/{self.arch}")
         self.target_root = self.workdir / "chroot"
         self.config = {
@@ -98,6 +109,9 @@ class BuildOrchestrator:
             "with_zram": self.with_zram,
             "with_calamares": self.with_calamares,
             "compression": self.compression,
+            "cloud_init": self.cloud_init,
+            "gaming_tweaks": self.gaming_tweaks,
+            "fs_type": self.fs_type,
         }
         if self.live_user is not None:
             self.config["live_user"] = self.live_user
@@ -234,6 +248,18 @@ class BuildOrchestrator:
             live_profile=self.live_profile,
         )
         self.config = self._normalize_runtime_config({**assembled_config, **self.config})
+        
+        # Inject Cloud-Init
+        if self.cloud_init:
+            if "packages" not in self.config:
+                self.config["packages"] = []
+            if "cloud-init" not in self.config["packages"]:
+                self.config["packages"].append("cloud-init")
+            if "services" not in self.config:
+                self.config["services"] = {"enable": [], "disable": []}
+            if "cloud-init" not in self.config["services"]["enable"]:
+                self.config["services"]["enable"].append("cloud-init")
+
         cache_root = resolve_cache_root(self.config)
         dnf_cache_dir = package_cache_dir(
             self.config,
