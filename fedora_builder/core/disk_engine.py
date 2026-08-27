@@ -18,8 +18,8 @@ class DiskEngine:
     def _calculate_image_size(self, rootfs: Path) -> int:
         if self.mode == "mock":
             return 1024
-        out = subprocess.check_output(["du", "-sm", str(rootfs)], check=True)
-        return int(out.split()[0], check=True) + 600
+        out = subprocess.check_output(["du", "-sm", str(rootfs)])
+        return int(out.split()[0]) + 600
 
     def build_disk_image(self) -> Path:
         out_path = self.workdir.parent.parent / "output" / f"{self.output_name}.img"
@@ -80,7 +80,7 @@ class DiskEngine:
         initrd = next((f.name for f in boot_dir.glob("initramfs-*.img")), "initramfs.img")
         
         kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
-        kernel_params = " ".join([p for p in kernel_params.split() if p != "rd.live.image"], check=True)
+        kernel_params = " ".join([p for p in kernel_params.split() if p != "rd.live.image"])
         
         if bootloader_type == "systemd-boot":
             import shutil
