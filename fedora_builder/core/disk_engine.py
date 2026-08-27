@@ -29,7 +29,7 @@ class DiskEngine:
             return out_path
             
         rootfs_size = self._calculate_image_size(self.target_root)
-        efi_size = 200
+        efi_size = 300
         total_size = rootfs_size + efi_size + 4
 
         efi_img = self.workdir / "efi.img"
@@ -77,7 +77,7 @@ class DiskEngine:
         # Find kernel and initramfs inside rootfs /boot
         boot_dir = self.target_root / "boot"
         vmlinuz = next((f.name for f in boot_dir.glob("vmlinuz-*") if not f.name.endswith(".old") and "rescue" not in f.name), "vmlinuz")
-        initrd = next((f.name for f in boot_dir.glob("initramfs-*.img")), "initramfs.img")
+        initrd = next((f.name for f in boot_dir.glob("initramfs-*.img") if "rescue" not in f.name), "initramfs.img")
         
         kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
         kernel_params = " ".join([p for p in kernel_params.split() if p != "rd.live.image"])
