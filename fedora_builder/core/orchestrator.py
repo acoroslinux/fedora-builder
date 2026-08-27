@@ -181,9 +181,11 @@ class BuildOrchestrator:
         if self.mode != "mock" and os.geteuid() == 0:
             unmount_all_under(resolve_from_project("workdir"))
 
+        # Completamente limpar a workdir específica da arquitetura (workdir/x86_64/)
         try:
-            if self.target_root.exists():
-                shutil.rmtree(self.target_root, ignore_errors=True)
+            if self.workdir.exists():
+                import shutil
+                shutil.rmtree(self.workdir, ignore_errors=True)
         except Exception:
             pass
 

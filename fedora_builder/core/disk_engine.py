@@ -18,8 +18,8 @@ class DiskEngine:
     def _calculate_image_size(self, rootfs: Path) -> int:
         if self.mode == "mock":
             return 1024
-        out = subprocess.check_output(["du", "-sm", str(rootfs)])
-        return int(out.split()[0]) + 600
+        out = subprocess.check_output(["du", "-sm", str(rootfs)], check=True)
+        return int(out.split()[0], check=True) + 600
 
     def build_disk_image(self) -> Path:
         out_path = self.workdir.parent.parent / "output" / f"{self.output_name}.img"
@@ -43,11 +43,11 @@ class DiskEngine:
         
         # Build root image directly from directory
         if self.toolchain:
-            self.toolchain.run_in_build_host(["truncate", "-s", f"{rootfs_size}M", str(root_img)])
+            self.toolchain.run_in_build_host(["truncate", "-s", f"{rootfs_size}M", str(root_img)], check=True)
             if fs_type == "btrfs":
-                self.toolchain.run_in_build_host(["mkfs.btrfs", "-r", str(self.target_root), str(root_img)])
+                self.toolchain.run_in_build_host(["mkfs.btrfs", "-r", str(self.target_root), str(root_img)], check=True)
             else:
-                self.toolchain.run_in_build_host(["mke2fs", "-t", "ext4", "-L", "ROOTFS", "-d", str(self.target_root), str(root_img)])
+                self.toolchain.run_in_build_host(["mke2fs", "-t", "ext4", "-L", "ROOTFS", "-d", str(self.target_root), str(root_img)], check=True)
         else:
             subprocess.run(["truncate", "-s", f"{rootfs_size}M", str(root_img)], check=True)
             if fs_type == "btrfs":
@@ -58,8 +58,8 @@ class DiskEngine:
         logger.info(f"Generating FAT32 EFI filesystem ({efi_size} MB)...")
         # Create FAT image
         if self.toolchain:
-            self.toolchain.run_in_build_host(["truncate", "-s", f"{efi_size}M", str(efi_img)])
-            self.toolchain.run_in_build_host(["mkfs.fat", "-F", "32", str(efi_img)])
+            self.toolchain.run_in_build_host(["truncate", "-s", f"{efi_size}M", str(efi_img)], check=True)
+            self.toolchain.run_in_build_host(["mkfs.fat", "-F", "32", str(efi_img)], check=True)
         else:
             subprocess.run(["truncate", "-s", f"{efi_size}M", str(efi_img)], check=True)
             subprocess.run(["mkfs.fat", "-F", "32", str(efi_img)], check=True)
@@ -80,7 +80,7 @@ class DiskEngine:
         initrd = next((f.name for f in boot_dir.glob("initramfs-*.img")), "initramfs.img")
         
         kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
-        kernel_params = " ".join([p for p in kernel_params.split() if p != "rd.live.image"])
+        kernel_params = " ".join([p for p in kernel_params.split() if p != "rd.live.image"], check=True)
         
         if bootloader_type == "systemd-boot":
             import shutil
@@ -140,22 +140,22 @@ menuentry "Fedora Linux" {{
 
         # Copy files to FAT image using mcopy
         if self.toolchain:
-            self.toolchain.run_in_build_host(["mcopy", "-s", "-i", str(efi_img), f"{self.workdir}/efi_tmp/EFI", "::/"])
+            self.toolchain.run_in_build_host(["mcopy", "-s", "-i", str(efi_img), f"{self.workdir}/efi_tmp/EFI", "::/"], check=True)
         else:
-            subprocess.run(["mcopy", "-s", "-i", str(efi_img), f"{self.workdir}/efi_tmp/EFI", "::/"])
+            subprocess.run(["mcopy", "-s", "-i", str(efi_img), f"{self.workdir}/efi_tmp/EFI", "::/"], check=True)
 
         logger.info(f"Building partitioned disk image ({total_size} MB)...")
         if self.toolchain:
-            self.toolchain.run_in_build_host(["dd", "if=/dev/zero", f"of={out_path}", "bs=1M", f"count={total_size}", "status=none"])
-            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mktable", "gpt"])
-            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mkpart", "ESP", "fat32", "1MiB", f"{efi_size+1}MiB"])
-            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "set", "1", "esp", "on"])
-            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), f"mkpart", "primary", fs_type, f"{efi_size+1}MiB", "100%"])
+            self.toolchain.run_in_build_host(["dd", "if=/dev/zero", f"of={out_path}", "bs=1M", f"count={total_size}", "status=none"], check=True)
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mktable", "gpt"], check=True)
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mkpart", "ESP", "fat32", "1MiB", f"{efi_size+1}MiB"], check=True)
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "set", "1", "esp", "on"], check=True)
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), f"mkpart", "primary", fs_type, f"{efi_size+1}MiB", "100%"], check=True)
             # Inject partitions
-            self.toolchain.run_in_build_host(["dd", f"if={efi_img}", f"of={out_path}", "bs=1M", "seek=1", "conv=notrunc", "status=none"])
-            self.toolchain.run_in_build_host(["dd", f"if={root_img}", f"of={out_path}", "bs=1M", f"seek={efi_size+1}", "conv=notrunc", "status=none"])
+            self.toolchain.run_in_build_host(["dd", f"if={efi_img}", f"of={out_path}", "bs=1M", "seek=1", "conv=notrunc", "status=none"], check=True)
+            self.toolchain.run_in_build_host(["dd", f"if={root_img}", f"of={out_path}", "bs=1M", f"seek={efi_size+1}", "conv=notrunc", "status=none"], check=True)
         else:
-            subprocess.run(["dd", "if=/dev/zero", f"of={out_path}", "bs=1M", f"count={total_size}", "status=none"])
+            subprocess.run(["dd", "if=/dev/zero", f"of={out_path}", "bs=1M", f"count={total_size}", "status=none"], check=True)
             subprocess.run(["parted", "-s", str(out_path), "mktable", "gpt"], check=True)
             subprocess.run(["parted", "-s", str(out_path), "mkpart", "ESP", "fat32", "1MiB", f"{efi_size+1}MiB"], check=True)
             subprocess.run(["parted", "-s", str(out_path), "set", "1", "esp", "on"], check=True)

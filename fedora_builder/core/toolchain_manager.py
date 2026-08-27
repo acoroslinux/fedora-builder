@@ -142,7 +142,7 @@ class ToolchainManager:
         self.releasever    = releasever
 
         # The isolated Fedora chroot used for running build tools (sibling to arch workdir, preventing recursive mounts)
-        self.build_host_dir = self.workdir_base.parent / "build_host"
+        self.build_host_dir = _resolve_from_project("build_host")
         # Persistent download cache, split by release and architecture below one project cache root.
         self.cache_root = Path(cache_root).resolve() if cache_root else resolve_cache_root()
         self.cache_dir = toolchain_cache_dir(self.cache_root, self.releasever, self.target_arch)
@@ -352,36 +352,30 @@ class ToolchainManager:
 
         # Bind-mount target leaf paths explicitly both to /workdir/<subname> and to matching host absolute paths inside build_host
         # to avoid infinite recursion of build_host inside itself.
-        subdirs = ["chroot", "iso_root"]
+        # Bind-mount the entire workdir_base and output_dir
         output_dir = _resolve_from_project("output")
-
-        # 1. Bind-mount to /workdir/<subname> inside build_host
-        workdir_mount_base = self.build_host_dir / "workdir"
-        workdir_mount_base.mkdir(parents=True, exist_ok=True)
-        for sub in subdirs:
-            host_sub = self.workdir_base / sub
-            host_sub.mkdir(parents=True, exist_ok=True)
-            chroot_sub = workdir_mount_base / sub
-            chroot_sub.mkdir(parents=True, exist_ok=True)
-            subprocess.run(["mount", "--bind", str(host_sub), str(chroot_sub)], capture_output=True)
-        # Also bind-mount the output dir
         output_dir.mkdir(parents=True, exist_ok=True)
-        (workdir_mount_base / "output").mkdir(parents=True, exist_ok=True)
-        subprocess.run(["mount", "--bind", str(output_dir), str(workdir_mount_base / "output")], capture_output=True)
-
-        # 2. Bind-mount to exact absolute host path inside build_host for transparent path resolution
-        for sub in subdirs:
-            host_sub = self.workdir_base / sub
-            host_sub.mkdir(parents=True, exist_ok=True)
-            target_in_chroot = self.build_host_dir / host_sub.relative_to("/")
-            target_in_chroot.mkdir(parents=True, exist_ok=True)
-            subprocess.run(["mount", "--bind", str(host_sub), str(target_in_chroot)], capture_output=True)
-        # Mirror output dir and cache root at their absolute paths inside build_host.
-        # DNF receives absolute cachedir paths, so the same cache root must exist inside build_host.
-        output_dir.mkdir(parents=True, exist_ok=True)
+        self.workdir_base.mkdir(parents=True, exist_ok=True)
+        
+        # Mount workdir_base at its absolute path inside build_host
+        workdir_in_chroot = self.build_host_dir / self.workdir_base.relative_to("/")
+        workdir_in_chroot.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["mount", "--bind", str(self.workdir_base), str(workdir_in_chroot)], capture_output=True)
+        
+        # Mount output_dir at its absolute path inside build_host
         output_in_chroot = self.build_host_dir / output_dir.relative_to("/")
         output_in_chroot.mkdir(parents=True, exist_ok=True)
         subprocess.run(["mount", "--bind", str(output_dir), str(output_in_chroot)], capture_output=True)
+        
+        # Legacy: Also mount to /workdir/ (some tools might use relative paths)
+        workdir_mount_base = self.build_host_dir / "workdir"
+        workdir_mount_base.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["mount", "--bind", str(self.workdir_base), str(workdir_mount_base)], capture_output=True)
+        
+        output_mount_base = self.build_host_dir / "workdir" / "output"
+        output_mount_base.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["mount", "--bind", str(output_dir), str(output_mount_base)], capture_output=True)
+
 
         self.cache_root.mkdir(parents=True, exist_ok=True)
         cache_in_chroot = self.build_host_dir / self.cache_root.relative_to("/")
@@ -399,20 +393,16 @@ class ToolchainManager:
 
         logger.info(f"Unmounting virtual filesystems from build_host: {self.build_host_dir}")
 
-        subdirs = ["chroot", "iso_root"]
         output_dir = _resolve_from_project("output")
 
-        # Unmount bind-mounted workdir leaves (reverse order)
         bind_targets = [
-            self.build_host_dir / self.cache_root.relative_to("/")
+            self.build_host_dir / self.cache_root.relative_to("/"),
+            self.build_host_dir / self.workdir_base.relative_to("/"),
+            self.build_host_dir / output_dir.relative_to("/"),
+            self.build_host_dir / "workdir" / "output",
+            self.build_host_dir / "workdir"
         ]
-        for sub in subdirs:
-            bind_targets.append(self.build_host_dir / (self.workdir_base / sub).relative_to("/"))
-        bind_targets.append(self.build_host_dir / output_dir.relative_to("/"))
-        for sub in subdirs:
-            bind_targets.append(self.build_host_dir / "workdir" / sub)
-        bind_targets.append(self.build_host_dir / "workdir" / "output")
-        bind_targets.append(self.build_host_dir / "workdir")
+
 
         for target in bind_targets:
             if target.exists():
