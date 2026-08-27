@@ -545,7 +545,7 @@ class ISOEngine:
         return out_path
 
     def build_disk_image(self) -> Path:
-        engine = DiskEngine(self.workdir, self.target_root, self.output_name, self.config, self.mode)
+        engine = DiskEngine(self.workdir, self.target_root, self.output_name, self.config, self.mode, self.toolchain)
         return engine.build_disk_image()
 
     def build_container(self) -> Path:

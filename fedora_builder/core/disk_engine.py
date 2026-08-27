@@ -1,46 +1,151 @@
 import subprocess
+import shutil
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import logging
 
 logger = logging.getLogger("disk_engine")
 
 class DiskEngine:
-    def __init__(self, workdir: Path, target_root: Path, output_name: str, config: Dict[str, Any], mode: str):
-        self.workdir = Path(workdir)
-        self.target_root = Path(target_root)
+    def __init__(self, workdir: Path, target_root: Path, output_name: str, config: Dict[str, Any], mode: str, toolchain: Optional[Any] = None):
+        self.workdir = Path(workdir).resolve()
+        self.target_root = Path(target_root).resolve()
         self.output_name = output_name
         self.config = config
         self.mode = mode
+        self.toolchain = toolchain
 
     def _calculate_image_size(self, rootfs: Path) -> int:
         if self.mode == "mock":
             return 1024
         out = subprocess.check_output(["du", "-sm", str(rootfs)])
-        return int(out.split()[0]) + 500
-
-    def _create_partition_table(self, img_file: Path, size_mb: int):
-        subprocess.run(["dd", "if=/dev/zero", f"of={img_file}", "bs=1M", f"count={size_mb}"], check=True)
-        subprocess.run(["parted", "-s", str(img_file), "mktable", "gpt"], check=True)
-        subprocess.run(["parted", "-s", str(img_file), "mkpart", "ESP", "fat32", "1MiB", "513MiB"], check=True)
-        subprocess.run(["parted", "-s", str(img_file), "set", "1", "esp", "on"], check=True)
-        subprocess.run(["parted", "-s", str(img_file), "mkpart", "primary", "ext4", "513MiB", "100%"], check=True)
-
-    def _format_partitions(self, img_file: Path):
-        pass
-
-    def _install_grub(self, img_file: Path, rootfs: Path):
-        pass
+        return int(out.split()[0]) + 600
 
     def build_disk_image(self) -> Path:
-        out_path = Path(f"output/{self.output_name}.img")
+        out_path = self.workdir.parent.parent / "output" / f"{self.output_name}.img"
         out_path.parent.mkdir(parents=True, exist_ok=True)
         if self.mode == "mock":
             out_path.touch()
             return out_path
             
-        size = self._calculate_image_size(self.target_root)
-        self._create_partition_table(out_path, size)
+        rootfs_size = self._calculate_image_size(self.target_root)
+        efi_size = 200
+        total_size = rootfs_size + efi_size + 4
+
+        efi_img = self.workdir / "efi.img"
+        root_img = self.workdir / "root.img"
         
-        logger.warning("Formatting and GRUB installation on disk image is incomplete (requires root loop devices).")
-        return out_path
+        logger.info(f"Generating EXT4 root filesystem ({rootfs_size} MB)...")
+        # Ensure target root has autorelabel
+        (self.target_root / ".autorelabel").touch()
+        
+        # Build ext4 root image directly from directory
+        if self.toolchain:
+            self.toolchain.run_in_build_host(["truncate", "-s", f"{rootfs_size}M", str(root_img)])
+            self.toolchain.run_in_build_host(["mke2fs", "-t", "ext4", "-L", "ROOTFS", "-d", str(self.target_root), str(root_img)])
+        else:
+            subprocess.run(["truncate", "-s", f"{rootfs_size}M", str(root_img)], check=True)
+            subprocess.run(["mke2fs", "-t", "ext4", "-L", "ROOTFS", "-d", str(self.target_root), str(root_img)], check=True)
+
+        logger.info(f"Generating FAT32 EFI filesystem ({efi_size} MB)...")
+        # Create FAT image
+        if self.toolchain:
+            self.toolchain.run_in_build_host(["truncate", "-s", f"{efi_size}M", str(efi_img)])
+            self.toolchain.run_in_build_host(["mkfs.fat", "-F", "32", str(efi_img)])
+        else:
+            subprocess.run(["truncate", "-s", f"{efi_size}M", str(efi_img)], check=True)
+            subprocess.run(["mkfs.fat", "-F", "32", str(efi_img)], check=True)
+
+        # Copy EFI bootloader into FAT image using mtools
+        # First, ensure we have the EFI files
+        efi_boot_dir = self.workdir / "efi_tmp" / "EFI" / "BOOT"
+        efi_boot_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Look for shim and grub
+        efi_fed_src = self.target_root / "boot" / "efi" / "EFI" / "fedora"
+        efi_boot_src = self.target_root / "boot" / "efi" / "EFI" / "BOOT"
+        
+        if efi_fed_src.exists():
+            shutil.copytree(efi_fed_src, self.workdir / "efi_tmp" / "EFI" / "fedora", dirs_exist_ok=True)
+        if efi_boot_src.exists():
+            shutil.copytree(efi_boot_src, efi_boot_dir, dirs_exist_ok=True)
+            
+        # Ensure BOOTX64.EFI exists
+        bootx64 = efi_boot_dir / "BOOTX64.EFI"
+        if not bootx64.exists():
+            shim = self.workdir / "efi_tmp" / "EFI" / "fedora" / "shimx64.efi"
+            grub = self.workdir / "efi_tmp" / "EFI" / "fedora" / "grubx64.efi"
+            if shim.exists():
+                shutil.copy2(shim, bootx64)
+            elif grub.exists():
+                shutil.copy2(grub, bootx64)
+            if grub.exists():
+                shutil.copy2(grub, efi_boot_dir / "grubx64.efi")
+
+        # Create basic grub.cfg for disk image boot
+        grub_cfg = self.workdir / "efi_tmp" / "EFI" / "fedora" / "grub.cfg"
+        grub_cfg.parent.mkdir(parents=True, exist_ok=True)
+        kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
+        kernel_params = " ".join([p for p in kernel_params.split() if p != "rd.live.image"])
+        
+        # Find kernel and initramfs inside rootfs /boot
+        boot_dir = self.target_root / "boot"
+        vmlinuz = next((f.name for f in boot_dir.glob("vmlinuz-*") if not f.name.endswith(".old")), "vmlinuz")
+        initrd = next((f.name for f in boot_dir.glob("initramfs-*.img")), "initramfs.img")
+        
+        grub_cfg.write_text(f"""
+search --no-floppy --set=root --label ROOTFS
+set prefix=($root)/boot/grub2
+
+menuentry "Fedora Linux" {{
+    linux /boot/{vmlinuz} root=LABEL=ROOTFS rw {kernel_params}
+    initrd /boot/{initrd}
+}}
+""")
+
+        # Copy files to FAT image using mcopy
+        if self.toolchain:
+            self.toolchain.run_in_build_host(["mcopy", "-s", "-i", str(efi_img), f"{self.workdir}/efi_tmp/EFI", "::/"])
+        else:
+            subprocess.run(["mcopy", "-s", "-i", str(efi_img), f"{self.workdir}/efi_tmp/EFI", "::/"])
+
+        logger.info(f"Building partitioned disk image ({total_size} MB)...")
+        if self.toolchain:
+            self.toolchain.run_in_build_host(["dd", "if=/dev/zero", f"of={out_path}", "bs=1M", f"count={total_size}", "status=none"])
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mktable", "gpt"])
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mkpart", "ESP", "fat32", "1MiB", f"{efi_size+1}MiB"])
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "set", "1", "esp", "on"])
+            self.toolchain.run_in_build_host(["parted", "-s", str(out_path), "mkpart", "primary", "ext4", f"{efi_size+1}MiB", "100%"])
+            # Inject partitions
+            self.toolchain.run_in_build_host(["dd", f"if={efi_img}", f"of={out_path}", "bs=1M", "seek=1", "conv=notrunc", "status=none"])
+            self.toolchain.run_in_build_host(["dd", f"if={root_img}", f"of={out_path}", "bs=1M", f"seek={efi_size+1}", "conv=notrunc", "status=none"])
+        else:
+            subprocess.run(["dd", "if=/dev/zero", f"of={out_path}", "bs=1M", f"count={total_size}", "status=none"])
+            subprocess.run(["parted", "-s", str(out_path), "mktable", "gpt"], check=True)
+            subprocess.run(["parted", "-s", str(out_path), "mkpart", "ESP", "fat32", "1MiB", f"{efi_size+1}MiB"], check=True)
+            subprocess.run(["parted", "-s", str(out_path), "set", "1", "esp", "on"], check=True)
+            subprocess.run(["parted", "-s", str(out_path), "mkpart", "primary", "ext4", f"{efi_size+1}MiB", "100%"], check=True)
+            subprocess.run(["dd", f"if={efi_img}", f"of={out_path}", "bs=1M", "seek=1", "conv=notrunc", "status=none"], check=True)
+            subprocess.run(["dd", f"if={root_img}", f"of={out_path}", "bs=1M", f"seek={efi_size+1}", "conv=notrunc", "status=none"], check=True)
+
+        compression = self.config.get("compression", "zstd")
+        logger.info(f"Compressing disk image with {compression}...")
+        
+        final_path = out_path
+        if compression == "xz":
+            cmd = ["xz", "-z9", "-T0", str(out_path)]
+            final_path = Path(f"{out_path}.xz")
+        elif compression == "gz" or compression == "gzip":
+            cmd = ["gzip", "-9", str(out_path)]
+            final_path = Path(f"{out_path}.gz")
+        else: # zstd
+            cmd = ["zstd", "-19", "-T0", "--rm", str(out_path)]
+            final_path = Path(f"{out_path}.zst")
+            
+        if self.toolchain:
+            self.toolchain.run_in_build_host(cmd)
+        else:
+            subprocess.run(cmd, check=True)
+            
+        logger.info(f"Disk image generated successfully at {final_path}")
+        return final_path

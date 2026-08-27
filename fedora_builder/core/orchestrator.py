@@ -97,6 +97,7 @@ class BuildOrchestrator:
             "with_flathub": self.with_flathub,
             "with_zram": self.with_zram,
             "with_calamares": self.with_calamares,
+            "compression": self.compression,
         }
         if self.live_user is not None:
             self.config["live_user"] = self.live_user
