@@ -544,9 +544,9 @@ class ISOEngine:
         subprocess.run(["tar", "-cJf", str(out_path), "-C", str(self.target_root), "."], env=env, check=True)
         return out_path
 
-    def build_disk_image(self) -> Path:
+    def build_disk_image(self, target_format: str = "img") -> Path:
         engine = DiskEngine(self.workdir, self.target_root, self.output_name, self.config, self.mode, self.toolchain)
-        return engine.build_disk_image()
+        return engine.build_disk_image(target_format)
 
     def build_container(self) -> Path:
         out_path = resolve_from_project(f"output/{self.output_name}-container.tar")

@@ -280,7 +280,7 @@ def main():
     # ── Output & Format ─────────────────────────────────────────────────────────
     parser.add_argument(
         "--format",
-        choices=["iso", "img", "tarball", "container"],
+        choices=["iso", "img", "qcow2", "vmdk", "vdi", "vhdx", "tarball", "container"],
         default="iso",
         help="Build artifact format: iso (default), img (raw disk), tarball (rootfs tar.xz), container (OCI tar).",
     )

@@ -333,8 +333,8 @@ class BuildOrchestrator:
 
             if self.output_format == "iso":
                 artifact = iso_engine.build_iso()
-            elif self.output_format == "img":
-                artifact = iso_engine.build_disk_image()
+            elif self.output_format in ("img", "qcow2", "vmdk", "vdi", "vhdx"):
+                artifact = iso_engine.build_disk_image(self.output_format)
             elif self.output_format == "tarball":
                 artifact = iso_engine.build_tarball()
             elif self.output_format == "container":
@@ -360,6 +360,10 @@ class BuildOrchestrator:
 
             if self.mode != "mock" and os.geteuid() == 0:
                 unmount_all_under(resolve_from_project("workdir"))
+
+            if self.clean:
+                logger.info("Performing post-build cleanup: Removing workdir...")
+                self._safe_clean_build_tree()
 
             output_dir = resolve_from_project("output")
             self._fix_output_permissions(output_dir)

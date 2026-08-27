@@ -74,6 +74,7 @@ _BUILD_HOST_PACKAGES = [
     "dosfstools",
     # Disk images
     "parted",
+    "qemu-img",
     "e2fsprogs",
     "btrfs-progs",
     # QEMU for cross-arch
