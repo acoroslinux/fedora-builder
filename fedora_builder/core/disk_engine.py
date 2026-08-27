@@ -178,7 +178,7 @@ menuentry "Fedora Linux" {{
             final_path = Path(f"{out_path}.zst")
             
         if self.toolchain:
-            self.toolchain.run_in_build_host(cmd)
+            self.toolchain.run_in_build_host(cmd, check=True)
         else:
             subprocess.run(cmd, check=True)
             
