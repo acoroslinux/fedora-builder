@@ -76,7 +76,7 @@ class DiskEngine:
         
         # Find kernel and initramfs inside rootfs /boot
         boot_dir = self.target_root / "boot"
-        vmlinuz = next((f.name for f in boot_dir.glob("vmlinuz-*") if not f.name.endswith(".old")), "vmlinuz")
+        vmlinuz = next((f.name for f in boot_dir.glob("vmlinuz-*") if not f.name.endswith(".old") and "rescue" not in f.name), "vmlinuz")
         initrd = next((f.name for f in boot_dir.glob("initramfs-*.img")), "initramfs.img")
         
         kernel_params = self.config.get("boot", {}).get("kernel_params", "quiet rhgb")
