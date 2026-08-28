@@ -201,7 +201,7 @@ def main():
 
     parser.add_argument(
         "--fs-type",
-        choices=["ext4", "btrfs"],
+        choices=["ext4", "btrfs", 'f2fs'],
         default="ext4",
         help="Root filesystem type for disk images. Default: ext4",
     )
