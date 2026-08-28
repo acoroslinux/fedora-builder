@@ -161,7 +161,7 @@ class BuildOrchestrator:
 
     def _build_dracut_command(self, kver: Optional[str] = None, rootfs: Optional[Path] = None) -> List[str]:
         dracut_cmd = ["dracut", "-f", "-N", "--nomdadmconf", "--nolvmconf"]
-        if self.output_format == "iso" or self.config.get("live_media", True):
+        if self.output_format == "iso":
             live_modules = [
                 "livenet",
                 "dmsquash-live",
@@ -348,6 +348,13 @@ class BuildOrchestrator:
             return artifact
 
         finally:
+            if self.clean and self.mode != "mock":
+                if os.geteuid() == 0:
+                    unmount_all_under(resolve_from_project("workdir"))
+                if hasattr(self, 'workdir') and self.workdir and self.workdir.exists():
+                    import shutil
+                    shutil.rmtree(self.workdir, ignore_errors=True)
+
             logger.info("Performing mandatory cleanup and unmounting all filesystems...")
             try:
                 chroot.umount_virtual_fs()
