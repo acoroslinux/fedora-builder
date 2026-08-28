@@ -36,6 +36,8 @@ class BuildOrchestrator:
         compression: str = "zstd",
         mode: str = "mock",
         clean: bool = True,
+        fast_mode: bool = False,
+        use_tmpfs: bool = False,
         copr_repos: Optional[List[str]] = None,
         extra_repos: Optional[List[str]] = None,
         live_user: Optional[str] = None,
@@ -70,6 +72,8 @@ class BuildOrchestrator:
         self.output_format = output_format
         self.mode = mode.lower()
         self.clean = clean
+        self.fast_mode = fast_mode
+        self.use_tmpfs = use_tmpfs
         self.generate_manifest = generate_manifest
         self.generate_kickstart = generate_kickstart
         self.with_calamares = with_calamares
@@ -250,6 +254,8 @@ class BuildOrchestrator:
             live_profile=self.live_profile,
         )
         self.config = self._normalize_runtime_config({**assembled_config, **self.config})
+        self.config["fast_mode"] = self.fast_mode
+        self.config["use_tmpfs"] = self.use_tmpfs
         
         # Inject Cloud-Init
         if self.cloud_init:
@@ -278,6 +284,39 @@ class BuildOrchestrator:
             cache_root=cache_root,
         )
         toolchain.setup()
+
+
+        if getattr(self, "use_tmpfs", False):
+            if getattr(self, "mode", "real") == "real" and __import__("os").geteuid() == 0:
+                tmpfs_size = "16G"
+                try:
+                    total_kb = 0
+                    with open("/proc/meminfo", "r") as f:
+                        for line in f:
+                            if line.startswith("MemTotal:") or line.startswith("SwapTotal:"):
+                                total_kb += int(line.split()[1])
+                    total_gb = total_kb / (1024 * 1024)
+                    safe_gb = max(4, min(16, int(total_gb * 0.75)))
+                    tmpfs_size = f"{safe_gb}G"
+                except Exception:
+                    pass
+
+                try:
+                    resolved_workdir = str(self.workdir.resolve())
+                    with open("/proc/mounts", "r") as f:
+                        if any(len(line.split()) >= 2 and line.split()[1] == resolved_workdir for line in f):
+                            import subprocess
+                            subprocess.run(["umount", "-f", resolved_workdir], check=False)
+                except Exception:
+                    pass
+
+                logger.info(f"🚀 Mounting tmpfs ({tmpfs_size} RAM disk) on {self.workdir}...")
+                self.workdir.mkdir(parents=True, exist_ok=True)
+                import subprocess
+                subprocess.run(["mount", "-t", "tmpfs", "-o", f"size={tmpfs_size},mode=0755", "tmpfs", str(self.workdir)], check=True)
+                self._tmpfs_mounted = True
+            else:
+                logger.info(f"🚀 [MOCK/SIM] Fast RAM staging enabled for {self.workdir}")
 
         chroot = ChrootManager(
             self.target_root,

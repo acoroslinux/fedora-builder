@@ -337,6 +337,21 @@ def main():
         help="Enable verbose logging.",
     )
 
+    
+    parser.add_argument(
+        "--fast",
+        "--quick",
+        dest="fast_mode",
+        action="store_true",
+        help="Enable ultra-fast build mode (multi-threaded zstd level 3, fast block sizes, and optimized staging).",
+    )
+
+    parser.add_argument(
+        "--tmpfs",
+        action="store_true",
+        help="Mount working directory as tmpfs in RAM for extreme build speed.",
+    )
+
     args = parser.parse_args()
 
     # ── --list-options ──────────────────────────────────────────────────────────
@@ -426,7 +441,8 @@ def main():
         cloud_init=args.cloud_init,
         gaming_tweaks=args.gaming_tweaks,
         fs_type=args.fs_type,
-    )
+        fast_mode=getattr(args, "fast_mode", False),
+        use_tmpfs=getattr(args, "tmpfs", False),)
 
     # ── --validate mode ─────────────────────────────────────────────────────────
     if args.validate_only:
