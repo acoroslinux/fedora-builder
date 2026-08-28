@@ -335,7 +335,18 @@ class BuildOrchestrator:
             dnf.configure_repos(self.config.get("repos", []))
 
             packages = self.config.get("packages", [])
+            if 'systemd-zram-generator' not in packages: packages.append('systemd-zram-generator')
             groups = self.config.get("groups", [])
+                        # Optimize DNF for speed
+            if self.mode == "real":
+                dnf_conf = chroot.target_root / "etc" / "dnf" / "dnf.conf"
+                dnf_conf.parent.mkdir(parents=True, exist_ok=True)
+                if not dnf_conf.exists():
+                    dnf_conf.write_text("[main]\n")
+                conf_data = dnf_conf.read_text()
+                if "fastestmirror" not in conf_data:
+                    conf_data += "\nfastestmirror=True\nmax_parallel_downloads=10\n"
+                    dnf_conf.write_text(conf_data)
             dnf.install_all(packages, groups)
 
             dnf.configure_selinux(self.config.get("selinux_mode", "permissive"))

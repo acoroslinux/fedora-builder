@@ -716,6 +716,42 @@ class SystemCustomizer:
         self.copy_custom_files()
 
     def configure_environment(self):
+
+        # ZRAM Swap (OS Speed)
+        if self.mode == "real":
+            zram_conf = self.target_root / "etc" / "systemd" / "zram-generator.conf"
+            zram_conf.parent.mkdir(parents=True, exist_ok=True)
+            zram_conf.write_text("[zram0]\nzram-size = ram / 2\n")
+            
+            # Debian zram-tools config
+            deb_zram = self.target_root / "etc" / "default" / "zramswap"
+            if deb_zram.parent.exists() and not deb_zram.exists():
+                deb_zram.write_text("ALGO=zstd\nPERCENT=50\n")
+
+
+        # Sanitize machine-id
+        if self.mode == "real":
+            machine_id = self.target_root / "etc" / "machine-id"
+            if machine_id.exists():
+                machine_id.write_text("")
+            else:
+                machine_id.parent.mkdir(parents=True, exist_ok=True)
+                machine_id.write_text("")
+
+
+        # Optimize fstab if it exists
+        if self.mode == "real":
+            fstab_path = self.target_root / "etc" / "fstab"
+            if fstab_path.exists():
+                lines = fstab_path.read_text().splitlines()
+                new_lines = []
+                for line in lines:
+                    if any(fs in line for fs in ['ext4', 'btrfs', 'f2fs']):
+                        if 'defaults' in line and 'commit=60' not in line:
+                            line = line.replace('defaults', 'defaults,noatime,commit=60')
+                    new_lines.append(line)
+                fstab_path.write_text('\n'.join(new_lines) + '\n')
+
         if self.config.get("live_media", True):
             self.configure_live_environment()
         else:
