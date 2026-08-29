@@ -307,7 +307,7 @@ class ISOEngine:
 
         # ---- BIOS grub.cfg + earlyboot.cfg + loopback.cfg ------------------
         if bios_enabled:
-            config_template = resolve_from_project("configs/bootloaders/templates/config.cfg.in")
+            config_template = resolve_from_project("configs/boot/templates/config.cfg.in")
             if config_template.exists():
                 config_text = config_template.read_text()
                 placeholders = grub._get_template_placeholders(iso_label, kernel_params)
@@ -482,7 +482,14 @@ class ISOEngine:
                 self._run_xorriso(classic_args, hybrid_args)
             elif bios_enabled:
                 logger.warning("Falling back to classic isolinux El Torito")
-                xorriso_args = [
+                
+        offline_repo_dir = self.config.get("offline_repo_dir")
+        if offline_repo_dir and __import__('pathlib').Path(offline_repo_dir).exists():
+            target_repo = self.iso_staging / "repo"
+            target_repo.parent.mkdir(parents=True, exist_ok=True)
+            __import__('shutil').copytree(offline_repo_dir, target_repo, dirs_exist_ok=True)
+
+        xorriso_args = [
                     "-as", "mkisofs",
                     "-iso-level", "3",
                     "-V", iso_label,
@@ -502,7 +509,14 @@ class ISOEngine:
                 self.toolchain.run_tool("xorriso", xorriso_args)
             elif uefi_enabled:
                 logger.info("UEFI-only build: generating ISO with EFI boot image only")
-                xorriso_args = [
+                
+        offline_repo_dir = self.config.get("offline_repo_dir")
+        if offline_repo_dir and __import__('pathlib').Path(offline_repo_dir).exists():
+            target_repo = self.iso_staging / "repo"
+            target_repo.parent.mkdir(parents=True, exist_ok=True)
+            __import__('shutil').copytree(offline_repo_dir, target_repo, dirs_exist_ok=True)
+
+        xorriso_args = [
                     "-as", "mkisofs",
                     "-iso-level", "3",
                     "-V", iso_label,
@@ -517,7 +531,14 @@ class ISOEngine:
                 self.toolchain.run_tool("xorriso", xorriso_args)
             else:
                 logger.warning("No boot path enabled; creating empty ISO stub")
-                xorriso_args = [
+                
+        offline_repo_dir = self.config.get("offline_repo_dir")
+        if offline_repo_dir and __import__('pathlib').Path(offline_repo_dir).exists():
+            target_repo = self.iso_staging / "repo"
+            target_repo.parent.mkdir(parents=True, exist_ok=True)
+            __import__('shutil').copytree(offline_repo_dir, target_repo, dirs_exist_ok=True)
+
+        xorriso_args = [
                     "-as", "mkisofs",
                     "-iso-level", "3",
                     "-V", iso_label,

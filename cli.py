@@ -252,7 +252,7 @@ def main():
         nargs="+",
         action="append",
         default=[],
-        help="Package profile from configs/packages. Can be provided multiple times (comma or space separated).",
+        help="Package profile from configs/software. Can be provided multiple times (comma or space separated).",
     )
 
     parser.add_argument(
@@ -323,6 +323,19 @@ def main():
     parser.set_defaults(generate_manifest=True)
 
     # ── Information & Diagnostics ───────────────────────────────────────────────
+
+    parser.add_argument(
+        "--with-offline-repo",
+        action="store_true",
+        help="Embed an offline package repository on the ISO/Image.",
+    )
+
+    parser.add_argument(
+        "--offline-repo-packages",
+        type=str,
+        default=None,
+        help="Comma-separated list of packages to include in the offline repository.",
+    )
     parser.add_argument(
         "--list-options",
         action="store_true",
@@ -364,7 +377,7 @@ def main():
 
     # ── Handle Device Profile ───────────────────────────────────────────────────
     if getattr(args, "device", None):
-        device_file = resolve_from_project(f"configs/devices/{args.device}.json")
+        device_file = resolve_from_project(f"configs/hardware/{args.device}.json")
         if device_file.exists():
             import json
             with open(device_file) as f:
@@ -394,11 +407,11 @@ def main():
         categories = [
             ("architectures",  "architectures"),
             ("releases",       "releases      "),
-            ("variants",       "variants      "),
+            ("system",       "variants      "),
             ("desktops",       "desktops      "),
-            ("kernels",        "kernels       "),
-            ("bootloaders",    "bootloaders   "),
-            ("packages",       "packages      "),
+            ("system",        "kernels       "),
+            ("boot",    "bootloaders   "),
+            ("software",       "packages      "),
             ("services",       "services      "),
             ("repos",          "repos         "),
             ("live-users",     "live-users    "),
@@ -475,7 +488,9 @@ def main():
         gaming_tweaks=args.gaming_tweaks,
         fs_type=args.fs_type,
         fast_mode=getattr(args, "fast_mode", False),
-        use_tmpfs=getattr(args, "tmpfs", False),)
+        use_tmpfs=getattr(args, "tmpfs", False),
+        with_offline_repo=getattr(args, "with_offline_repo", False),
+        offline_repo_packages=_parse_list_arg(getattr(args, "offline_repo_packages", None)),)
 
     # ── --validate mode ─────────────────────────────────────────────────────────
     if args.validate_only:

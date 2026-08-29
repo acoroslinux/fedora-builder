@@ -111,7 +111,7 @@ class Grub2Bootloader:
     # -------------------------------------------------------------------------
     def generate_grub_cfg(self, kernel_name: str, initramfs_name: str,
                           iso_label: str, kernel_params: str) -> str:
-        grub_template = resolve_from_project("configs/bootloaders/templates/grub.cfg.in")
+        grub_template = resolve_from_project("configs/boot/templates/grub.cfg.in")
         if grub_template.exists():
             content = grub_template.read_text()
             placeholders = self._get_template_placeholders(iso_label, kernel_params)
@@ -164,7 +164,7 @@ class Grub2Bootloader:
     # -------------------------------------------------------------------------
     def generate_loopback_cfg(self, kernel_name: str, initramfs_name: str,
                               iso_label: str, kernel_params: str) -> str:
-        loopback_template = resolve_from_project("configs/bootloaders/templates/loopback.cfg.in")
+        loopback_template = resolve_from_project("configs/boot/templates/loopback.cfg.in")
         if loopback_template.exists():
             content = loopback_template.read_text()
             placeholders = self._get_template_placeholders(iso_label, kernel_params)
@@ -199,7 +199,7 @@ class Grub2Bootloader:
     # -------------------------------------------------------------------------
     def generate_isolinux_cfg(self, kernel_name: str, initramfs_name: str,
                               iso_label: str, kernel_params: str) -> str:
-        isolinux_template = resolve_from_project("configs/bootloaders/templates/isolinux.cfg.in")
+        isolinux_template = resolve_from_project("configs/boot/templates/isolinux.cfg.in")
         if isolinux_template.exists():
             content = isolinux_template.read_text()
             placeholders = self._get_template_placeholders(iso_label, kernel_params)
@@ -229,7 +229,7 @@ class Grub2Bootloader:
     # EFI grub.cfg  (EFI/BOOT/grub.cfg  AND  EFI/fedora/grub.cfg)
     # -------------------------------------------------------------------------
     def generate_efi_grub_cfg(self, iso_label: str, kernel_params: str) -> str:
-        grub_template = resolve_from_project("configs/bootloaders/templates/grub.cfg.in")
+        grub_template = resolve_from_project("configs/boot/templates/grub.cfg.in")
         if grub_template.exists():
             content = grub_template.read_text()
             placeholders = self._get_template_placeholders(iso_label, kernel_params)

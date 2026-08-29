@@ -62,7 +62,7 @@ class ConfigLoader:
         global_config_path = Path(global_config_path) if isinstance(global_config_path, str) else global_config_path
 
         config = {
-            "packages": [],
+            "software": [],
             "groups": [],
             "services": {"enable": [], "disable": []},
             "copy_files": [],
@@ -91,7 +91,7 @@ class ConfigLoader:
         config = self._merge_dicts(config, self.load_profile("architectures", architecture))
 
         if variant:
-            config = self._merge_dicts(config, self.load_profile("variants", variant))
+            config = self._merge_dicts(config, self.load_profile("system", variant))
 
         if desktop:
             desktop_data = self.load_profile("desktops", desktop)
@@ -101,19 +101,19 @@ class ConfigLoader:
                     config["copy_files"].append(entry)
 
         if kernel:
-            config = self._merge_dicts(config, self.load_profile("kernels", kernel))
+            config = self._merge_dicts(config, self.load_profile("system", kernel))
 
         if bootloader:
             if isinstance(bootloader, dict):
                 config = self._merge_dicts(config, {"bootloader": bootloader})
             else:
-                config = self._merge_dicts(config, self.load_profile("bootloaders", bootloader))
+                config = self._merge_dicts(config, self.load_profile("boot", bootloader))
 
-        config = self._merge_dicts(config, self.load_profile("packages", "base"))
+        config = self._merge_dicts(config, self.load_profile("software", "base"))
 
         if package_profiles:
             for profile in package_profiles:
-                profile_data = self.load_profile("packages", profile)
+                profile_data = self.load_profile("software", profile)
                 config = self._merge_dicts(config, profile_data)
                 for entry in profile_data.get("copy_files", []):
                     if entry not in config["copy_files"]:
@@ -157,7 +157,7 @@ class ConfigLoader:
             if isinstance(legacy_services, list):
                 config["services"][target_key] = config["services"].get(target_key, []) + legacy_services
 
-        for key in ["packages", "groups", "repos", "kernel_packages", "copy_files"]:
+        for key in ["software", "groups", "repos", "kernel_packages", "copy_files"]:
             if key in config and isinstance(config[key], list):
                 if key == "copy_files":
                     deduped = []

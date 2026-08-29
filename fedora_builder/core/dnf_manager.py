@@ -41,7 +41,7 @@ class DNFManager:
             fallback = (
                 Path(tempfile.gettempdir())
                 / "fedora-builder-cache"
-                / "packages"
+                / "software"
                 / str(releasever)
                 / str(basearch)
                 / "dnf"
@@ -303,3 +303,10 @@ class DNFManager:
 
     def configure_dnf_in_rootfs(self):
         self.configure_dnf_conf()
+
+    def download_offline_packages(self, packages: list, dest_dir):
+        if not packages: return
+        import os, subprocess
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        cmd = ["dnf", "download", "--resolve", "--destdir", str(dest_dir)] + packages
+        self.chroot.run_in_chroot(cmd)

@@ -19,7 +19,7 @@ def resolve_cache_root(config: Optional[Dict[str, Any]] = None) -> Path:
 
 
 def package_cache_dir(config: Dict[str, Any], releasever: Any, basearch: str) -> Path:
-    return resolve_cache_root(config) / "packages" / normalize_releasever(releasever) / basearch / "dnf"
+    return resolve_cache_root(config) / "software" / normalize_releasever(releasever) / basearch / "dnf"
 
 
 def rootfs_seed_cache_path(config: Dict[str, Any], releasever: Any, basearch: str) -> Path:

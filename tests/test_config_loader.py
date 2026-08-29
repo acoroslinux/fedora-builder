@@ -74,12 +74,12 @@ class TestLoadProfile:
             release="fedora-41",
         )
         assert isinstance(config, dict)
-        assert "packages" in config
+        assert "software" in config
 
     def test_loads_desktop_gnome(self, loader):
         data = loader.load_profile("desktops", "gnome")
         assert isinstance(data, dict)
-        assert "packages" in data or "groups" in data
+        assert "software" in data or "groups" in data
 
     def test_loads_desktop_kde(self, loader):
         data = loader.load_profile("desktops", "kde")
@@ -90,7 +90,7 @@ class TestLoadProfile:
         assert isinstance(data, dict)
 
     def test_loads_base_packages(self, loader):
-        data = loader.load_profile("packages", "base")
+        data = loader.load_profile("software", "base")
         assert isinstance(data, dict)
 
     def test_missing_profile_returns_empty_dict(self, loader):
@@ -102,7 +102,7 @@ class TestLoadProfile:
         assert isinstance(data, dict)
 
     def test_loads_variant_live(self, loader):
-        data = loader.load_profile("variants", "live")
+        data = loader.load_profile("system", "live")
         assert isinstance(data, dict)
 
     def test_loads_service_base(self, loader):
@@ -122,12 +122,12 @@ class TestMergeDicts:
         assert result["c"] == 3
 
     def test_merge_lists_extends_without_duplicates(self, loader):
-        base = {"packages": ["bash", "coreutils"]}
-        update = {"packages": ["bash", "vim", "git"]}
+        base = {"software": ["bash", "coreutils"]}
+        update = {"software": ["bash", "vim", "git"]}
         result = loader._merge_dicts(base, update)
-        assert result["packages"].count("bash") == 1
-        assert "vim" in result["packages"]
-        assert "coreutils" in result["packages"]
+        assert result["software"].count("bash") == 1
+        assert "vim" in result["software"]
+        assert "coreutils" in result["software"]
 
     def test_merge_nested_dicts_recursive(self, loader):
         base = {"system": {"locale": "en_US.UTF-8", "timezone": "UTC"}}
@@ -138,10 +138,10 @@ class TestMergeDicts:
         assert result["system"]["hostname"] == "myhost"
 
     def test_merge_does_not_mutate_base(self, loader):
-        base = {"packages": ["bash"]}
-        update = {"packages": ["vim"]}
+        base = {"software": ["bash"]}
+        update = {"software": ["vim"]}
         _ = loader._merge_dicts(base, update)
-        assert base["packages"] == ["bash"]
+        assert base["software"] == ["bash"]
 
 
 # ── test_assemble_build_config ────────────────────────────────────────────────────
@@ -154,8 +154,8 @@ class TestAssembleBuildConfig:
             release="fedora-41",
         )
         assert isinstance(config, dict)
-        assert "packages" in config
-        assert isinstance(config["packages"], list)
+        assert "software" in config
+        assert isinstance(config["software"], list)
 
     def test_assembly_includes_desktop_gnome(self, loader, global_config_path):
         config = loader.assemble_build_config(
@@ -199,7 +199,7 @@ class TestAssembleBuildConfig:
             release="fedora-41",
             package_profiles=["audio", "bluetooth"],
         )
-        assert isinstance(config["packages"], list)
+        assert isinstance(config["software"], list)
         assert isinstance(config["copy_files"], list)
 
     def test_assembly_includes_base_copy_files(self, loader, global_config_path):
@@ -230,7 +230,7 @@ class TestAssembleBuildConfig:
             release="fedora-41",
             package_profiles=["base", "networking"],
         )
-        pkgs = config.get("packages", [])
+        pkgs = config.get("software", [])
         assert len(pkgs) == len(set(pkgs)), "Packages list contains duplicates!"
 
     def test_assembly_with_variant_live(self, loader, global_config_path):
@@ -288,9 +288,9 @@ class TestAvailableProfiles:
         ("architectures", 4),
         ("desktops", 9),
         ("releases", 5),
-        ("variants", 5),
-        ("kernels", 3),
-        ("bootloaders", 3),
+        ("system", 5),
+        ("system", 3),
+        ("boot", 3),
         ("live-users", 2),
     ])
     def test_profile_counts(self, config_root, category, expected_min_count):
@@ -308,7 +308,7 @@ class TestAvailableProfiles:
             "security", "system-utils", "virtualization", "wayland", "xorg"
         ]
         for name in required:
-            path = config_root / "packages" / f"{name}.json"
+            path = config_root / "software" / f"{name}.json"
             assert path.exists(), f"Missing package profile: {name}.json"
 
     def test_repo_profiles_exist(self, config_root):

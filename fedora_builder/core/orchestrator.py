@@ -259,10 +259,10 @@ class BuildOrchestrator:
         
         # Inject Cloud-Init
         if self.cloud_init:
-            if "packages" not in self.config:
-                self.config["packages"] = []
-            if "cloud-init" not in self.config["packages"]:
-                self.config["packages"].append("cloud-init")
+            if "software" not in self.config:
+                self.config["software"] = []
+            if "cloud-init" not in self.config["software"]:
+                self.config["software"].append("cloud-init")
             if "services" not in self.config:
                 self.config["services"] = {"enable": [], "disable": []}
             if "cloud-init" not in self.config["services"]["enable"]:
@@ -334,7 +334,7 @@ class BuildOrchestrator:
             dnf.bootstrap_rootfs(self.config["releasever"], self.config["basearch"])
             dnf.configure_repos(self.config.get("repos", []))
 
-            packages = self.config.get("packages", [])
+            packages = self.config.get("software", [])
             if 'systemd-zram-generator' not in packages: packages.append('systemd-zram-generator')
             groups = self.config.get("groups", [])
                         # Optimize DNF for speed

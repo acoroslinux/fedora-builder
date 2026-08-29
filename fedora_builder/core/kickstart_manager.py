@@ -22,7 +22,7 @@ class KickstartManager:
 
     def _packages_section(self) -> str:
         res = "%packages\n"
-        packages = self.config.get("packages", [])
+        packages = self.config.get("software", [])
         groups = self.config.get("groups", [])
         for g in groups:
             res += f"@{g}\n"

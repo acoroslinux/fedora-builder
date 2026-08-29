@@ -16,7 +16,7 @@ def test_package_cache_is_split_by_release_and_arch(tmp_path):
     config = {"system": {"dnf_cache": str(tmp_path / "builder-cache")}}
 
     assert package_cache_dir(config, "45", "x86_64") == (
-        tmp_path / "builder-cache" / "packages" / "45" / "x86_64" / "dnf"
+        tmp_path / "builder-cache" / "software" / "45" / "x86_64" / "dnf"
     )
 
 
