@@ -35,6 +35,7 @@ env/
 
 # ── Build work directories ───────────────────────────────────────────────────────
 workdir/
+build_host/
 output/
 cache/
 

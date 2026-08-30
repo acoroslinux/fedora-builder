@@ -25,6 +25,13 @@ class ISOEngine:
         self.toolchain = toolchain
         self.iso_staging = self.workdir / "iso_root"
 
+    def _resolve_output_path(self, extension: str) -> Path:
+        requested = Path(self.output_name)
+        candidate = requested if requested.suffix == f".{extension}" else requested.with_suffix(f".{extension}")
+        if candidate.is_absolute() or candidate.parent != Path("."):
+            return candidate
+        return resolve_from_project("output") / candidate
+
     def _get_iso_label(self) -> str:
         # Support both flat key and nested system.iso_label
         if "iso_label" in self.config:
@@ -362,7 +369,7 @@ class ISOEngine:
         self._create_discinfo(self.iso_staging)
         self._create_treeinfo(self.iso_staging)
 
-        iso_path = resolve_from_project(f"output/{self.output_name}.iso")
+        iso_path = self._resolve_output_path("iso")
         iso_path.parent.mkdir(parents=True, exist_ok=True)
 
         if self.mode != "mock" and hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:

@@ -261,9 +261,14 @@ class BuildOrchestrator:
 
     def build(self, output_name: Optional[str] = None) -> Path:
         if output_name:
-            if output_name.endswith((".iso", ".img", ".tar.xz", ".tar")):
+            output_path = Path(output_name)
+            if output_path.is_absolute() or output_path.parent != Path("."):
+                artifact_name = output_name
+            elif output_name.endswith((".iso", ".img", ".tar.xz", ".tar")):
                 output_name = Path(output_name).stem.replace(".tar", "")
-            artifact_name = output_name
+                artifact_name = output_name
+            else:
+                artifact_name = output_name
         else:
             artifact_name = f"fedora-{self.arch}"
 
