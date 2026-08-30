@@ -12,6 +12,7 @@ class SystemCustomizer:
         self.chroot = chroot
         self.config = config
         self.target_root = chroot.target_root
+        self.mode = chroot.mode
 
     def setup_live_users(self):
         live_user = self.config.get("live_user", "liveuser")
@@ -600,6 +601,43 @@ class SystemCustomizer:
             service_link.unlink()
         service_link.symlink_to(Path("../anaconda-launch.service"))
 
+
+    def apply_theme_assets(self, chroot):
+        import json
+        import shutil
+        from pathlib import Path
+        try:
+            from core.path_utils import resolve_from_project
+        except ImportError:
+            try:
+                # deb_dev_builder/core or fedora_builder/core
+                from ..core.path_utils import resolve_from_project
+            except ImportError:
+                def resolve_from_project(p): return Path(p)
+
+        mapping_file = resolve_from_project("configs/assets/theme_mapping.json")
+        assets_dir = resolve_from_project("configs/assets")
+
+        if not mapping_file.exists():
+            return
+
+        try:
+            with open(mapping_file, 'r') as f:
+                mapping = json.load(f)
+
+            for asset_name, paths in mapping.items():
+                src = assets_dir / asset_name
+                if src.exists():
+                    for target in paths:
+                        target_path = chroot.chroot_path / target.lstrip('/')
+                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src, target_path)
+        except Exception as e:
+            if 'logger' in globals():
+                logger.error(f"Failed to apply theme assets: {e}")
+            else:
+                print(f"Failed to apply theme assets: {e}")
+
     def copy_custom_files(self):
         """
         Copy custom files into the target rootfs using the unified copy_files list
@@ -661,6 +699,8 @@ class SystemCustomizer:
                     pass
 
             logger.debug(f"copy_files: {src_rel} → {dest_rel}")
+
+        self.apply_theme_assets(self.chroot)
 
     def configure_gaming_tweaks(self):
         """Apply aggressive sysctl, CPU governor, and IO performance tweaks."""

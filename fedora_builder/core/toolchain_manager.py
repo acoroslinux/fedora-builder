@@ -143,7 +143,7 @@ class ToolchainManager:
         self.releasever    = releasever
 
         # The isolated Fedora chroot used for running build tools (sibling to arch workdir, preventing recursive mounts)
-        self.build_host_dir = _resolve_from_project("build_host")
+        self.build_host_dir = self.workdir_base.parent / "build_host"
         # Persistent download cache, split by release and architecture below one project cache root.
         self.cache_root = Path(cache_root).resolve() if cache_root else resolve_cache_root()
         self.cache_dir = toolchain_cache_dir(self.cache_root, self.releasever, self.target_arch)

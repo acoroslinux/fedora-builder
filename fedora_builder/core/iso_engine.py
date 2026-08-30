@@ -365,7 +365,7 @@ class ISOEngine:
         iso_path = resolve_from_project(f"output/{self.output_name}.iso")
         iso_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:
+        if self.mode != "mock" and hasattr(self.toolchain, "build_host_dir") and self.toolchain.build_host_dir:
             project_root = self.workdir.parent.parent
             (self.toolchain.build_host_dir / project_root.relative_to("/") / "output").mkdir(parents=True, exist_ok=True)
             (self.toolchain.build_host_dir / "workdir" / "output").mkdir(parents=True, exist_ok=True)
@@ -482,14 +482,7 @@ class ISOEngine:
                 self._run_xorriso(classic_args, hybrid_args)
             elif bios_enabled:
                 logger.warning("Falling back to classic isolinux El Torito")
-                
-        offline_repo_dir = self.config.get("offline_repo_dir")
-        if offline_repo_dir and __import__('pathlib').Path(offline_repo_dir).exists():
-            target_repo = self.iso_staging / "repo"
-            target_repo.parent.mkdir(parents=True, exist_ok=True)
-            __import__('shutil').copytree(offline_repo_dir, target_repo, dirs_exist_ok=True)
-
-        xorriso_args = [
+                xorriso_args = [
                     "-as", "mkisofs",
                     "-iso-level", "3",
                     "-V", iso_label,
@@ -509,14 +502,7 @@ class ISOEngine:
                 self.toolchain.run_tool("xorriso", xorriso_args)
             elif uefi_enabled:
                 logger.info("UEFI-only build: generating ISO with EFI boot image only")
-                
-        offline_repo_dir = self.config.get("offline_repo_dir")
-        if offline_repo_dir and __import__('pathlib').Path(offline_repo_dir).exists():
-            target_repo = self.iso_staging / "repo"
-            target_repo.parent.mkdir(parents=True, exist_ok=True)
-            __import__('shutil').copytree(offline_repo_dir, target_repo, dirs_exist_ok=True)
-
-        xorriso_args = [
+                xorriso_args = [
                     "-as", "mkisofs",
                     "-iso-level", "3",
                     "-V", iso_label,
@@ -531,14 +517,7 @@ class ISOEngine:
                 self.toolchain.run_tool("xorriso", xorriso_args)
             else:
                 logger.warning("No boot path enabled; creating empty ISO stub")
-                
-        offline_repo_dir = self.config.get("offline_repo_dir")
-        if offline_repo_dir and __import__('pathlib').Path(offline_repo_dir).exists():
-            target_repo = self.iso_staging / "repo"
-            target_repo.parent.mkdir(parents=True, exist_ok=True)
-            __import__('shutil').copytree(offline_repo_dir, target_repo, dirs_exist_ok=True)
-
-        xorriso_args = [
+                xorriso_args = [
                     "-as", "mkisofs",
                     "-iso-level", "3",
                     "-V", iso_label,

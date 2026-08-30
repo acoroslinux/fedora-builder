@@ -1,0 +1,11 @@
+{
+    "background.png": [
+        "/usr/share/grub/themes/modern/background.png",
+        "/backgrounds/default-wallpaper.png",
+        "/backgrounds/fedora-modern-wallpaper.jpg",
+        "/usr/share/plymouth/themes/fedora-modern/splash.png",
+        "/usr/share/plymouth/themes/fedora-modern/background.png",
+        "/usr/share/backgrounds/fedora-modern/fedora-modern.jpg",
+        "/boot/grub2/themes/fedora-modern/fedora-grub-bg.jpg"
+    ]
+}
